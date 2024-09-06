@@ -14,4 +14,5 @@
   "editor.rulers": [80],
   "editor.tabSize": 2,
   "editor.indentSize": "tabSize",
+  "python.analysis.typeCheckingMode": "basic",
 }

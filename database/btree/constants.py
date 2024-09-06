@@ -9,3 +9,19 @@ class NodeType(Enum):
   NULL = 0
   LEAF = 1
   INTERNAL = 2
+
+
+class MergeDir(Enum):
+  NONE = 0
+  LEFT = -1
+  RIGHT = 1
+
+
+# =========================================================================== #
+# Constants                                                                   #
+# =========================================================================== #
+
+
+PAGE_SIZE = 4096
+MAX_KEY_SIZE = 1000
+MAX_VALUE_SIZE = 3000

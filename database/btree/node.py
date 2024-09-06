@@ -1,223 +1,184 @@
-from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Tuple
+from dataclasses import dataclass
 
 from database.btree.constants import NodeType
+from database.btree.constants import PAGE_SIZE
 from database.utils import binary
 
 
-class Node(ABC):
-  """
-  Node
-  ====
-  Node is an abstract class that represents a node in the B+ tree.
-  """
+@dataclass
+class NodeData:
+  key: bytes
+  value: bytes
+  child: int = 0
 
-  def __init__(self, node_type: NodeType) -> None:
-    self._type = node_type
+
+class Node:
+  # Node structure:
+  # |--------------------------------------|
+  # | type | nkeys | children... | data... |
+  # | 1b   | 8b    | 8b * nkeys  | ...     |
+  # |--------------------------------------|
+  #
+  # Data structure:
+  # |-------------------------------------------------------|
+  # | key length | value length | key        | value        |
+  # | 2b         | 2b           | key length | value length |
+  # |-------------------------------------------------------|
+
+  def __init__(self, ntype: NodeType) -> None:
+    self._type = ntype
+    self._data: List[NodeData] = []
+
+  def __repr__(self) -> str:
+    kv_str = "Key-Value:\n    " + "\n    ".join(f"{x.key}: {x.value} "
+                                                for x in self._data)
+    child_str = "Children:" + ",".join(str(x.child) for x in self._data)
+    return f"Node: {self.type.name}\n  " + child_str + "\n  " + kv_str
+
+  def __str__(self) -> str:
+    return self.__repr__()
 
   @property
   def type(self) -> NodeType:
-    """
-    Return the type of the node.
-    """
     return self._type
 
   @property
-  @abstractmethod
-  def n_keys(self) -> int:
-    """
-    Return the number of keys in the node.
-    """
+  def nkeys(self) -> int:
+    return len(self._data)
 
   @property
-  @abstractmethod
   def total_bytes(self) -> int:
-    """
-    Return the total number of bytes required to serialize the node.
-    """
+    return 1 + 8 + 8 * self.nkeys + sum(
+        2 + 2 + len(x.key) + len(x.value) for x in self._data
+    )
 
-  @abstractmethod
   def serialize(self) -> bytes:
-    """
-    Serialize the node to bytes.
-    """
+    data = binary.bytes1(self.type.value) + binary.bytes8(self.nkeys)
+    for i in range(self.nkeys):
+      data += binary.bytes8(self._data[i].child)
+    for i in range(self.nkeys):
+      data_i = self._data[i]
+      data += binary.bytes2(len(data_i.key)) + binary.bytes2(len(data_i.value))
+      data += data_i.key + data_i.value
+    return data
 
   @staticmethod
-  @abstractmethod
   def deserialize(data: bytes) -> "Node":
-    """
-    Deserialize the node from bytes.
-    """
-
-
-class LeafNode(Node):
-  """
-  LeafNode
-  ========
-  LeafNode represents a leaf node in the B+ tree.
-  """
-
-  # Node structure:
-  # |-------------------------------|
-  # | type | n_keys  | key-value... |
-  # | 1b   | 8b      | ...          |
-  # |-------------------------------|
-  #
-  # Key-value structure:
-  # |-----------------------------------------|
-  # | key length | value length | key | value |
-  # | 2b         | 2b           | ... | ...   |
-  # |-----------------------------------------|
-
-  def __init__(self) -> None:
-    super().__init__(NodeType.LEAF)
-    self._keys: List[bytes] = []
-    self._values: List[bytes] = []
-
-  def __repr__(self) -> str:
-    pairs = "\n  ".join(
-        f"{key}: {value} "for key, value in zip(self._keys, self._values)
-    )
-    return f"LeafNode:\n  {pairs}"
-
-  def __str__(self) -> str:
-    return self.__repr__()
-
-  @property
-  def n_keys(self) -> int:
-    return len(self._keys)
-
-  @property
-  def total_bytes(self) -> int:
-    return 1 + 8 + sum(
-        2 + 2 + len(k) + len(v) for k, v in zip(self._keys, self._values)
-    )
-
-  def serialize(self) -> bytes:
-    data = binary.bytes1(self.type.value) + binary.bytes8(self.n_keys)
-    for key, value in zip(self._keys, self._values):
-      data += binary.bytes2(len(key)) + binary.bytes2(len(value)) + key + value
-    return data
-
-  @staticmethod
-  def deserialize(data: bytes) -> "LeafNode":
-    node_type = NodeType(binary.uint8(data[:1]))
-    assert node_type == NodeType.LEAF
-    node = LeafNode()
-    n_keys = binary.uint64(data[1:9])
+    node = Node(NodeType(binary.uint8(data[:1])))
+    assert node.type != NodeType.NULL
+    nkeys = binary.uint64(data[1:9])
     data = data[9:]
-    for i in range(n_keys):
-      key_length = binary.uint16(data[:2])
-      value_length = binary.uint16(data[2:4])
-      node.insert(
-          i,
-          data[4: 4 + key_length],
-          data[4 + key_length: 4 + key_length + value_length],
-      )
-      data = data[4 + key_length + value_length:]
+    child_data = data[9:9 + 8 * nkeys]
+    data = data[9 + 8 * nkeys:]
+    for i in range(nkeys):
+      klen = binary.uint16(data[:2])
+      vlen = binary.uint16(data[2:4])
+      node.insert_data(i, data[4:4+klen], data[4+klen:4+klen+vlen])
+      data = data[4+klen+vlen:]
+    for i in range(nkeys):
+      node.set_child(i, binary.uint64(child_data[:8]))
+      child_data = child_data[8:]
     return node
 
-  def insert(self, index: int, key: bytes, value: bytes) -> None:
-    """
-    Insert a key-value pair at the specified index.
-    """
-    assert 0 <= index <= len(self._keys)
-    self._keys.insert(index, key)
-    self._values.insert(index, value)
+  def insert_data(self, index: int, key: bytes, value: bytes):
+    assert 0 <= index <= self.nkeys
+    self._data.insert(index, NodeData(key, value))
 
+  def set_child(self, index: int, child: int):
+    self._data[index].child = child
 
-class InternalNode(Node):
-  """
-  InternalNode
-  ============
-  InternalNode represents an internal node in the B+ tree
-  """
+  def get(self, index: int) -> NodeData:
+    return self._data[index]
 
-  # Node structure:
-  # |----------------------------------------------|
-  # | type | n_keys  | n_child | child... | key... |
-  # | 1b   | 8b      | 8b      | ...      | ...    |
-  # |----------------------------------------------|
-  #
-  # Child structure:
-  # |----------|
-  # | child id |
-  # | 8b       |
-  # |----------|
-  #
-  # Key structure:
-  # |------------------|
-  # | key length | key |
-  # | 2b         | ... |
-  # |------------------|
+  def get_child(self, index: int) -> int:
+    return self._data[index].child
 
-  def __init__(self) -> None:
-    super().__init__(NodeType.INTERNAL)
-    self._children: List[int] = []
-    self._keys: List[bytes] = []
+  def lookup_le(self, key: bytes) -> int:
+    found = 0
+    for i in range(1, self.nkeys):
+      if self.get(i).key > key:
+        break
+      found = i
+    return found
 
-  def __repr__(self) -> str:
-    children = ", ".join(str(child) for child in self._children)
-    keys = ", ".join(str(key) for key in self._keys)
-    return f"InternalNode:\n  Children: {children}\n  Keys: {keys}"
+  def leaf_insert(self, index: int, key: bytes, value: bytes) -> "Node":
+    assert self.type == NodeType.LEAF
+    new = Node(NodeType.LEAF)
+    for i in range(index):
+      new.insert_data(i, self.get(i).key, self.get(i).value)
+      new.set_child(i, self.get_child(i))
+    new.insert_data(index, key, value)
+    for i in range(index, self.nkeys):
+      new.set_child(i + 1, self.get_child(i))
+      new.insert_data(i + 1, self.get(i).key, self.get(i).value)
+    return new
 
-  def __str__(self) -> str:
-    return self.__repr__()
+  def leaf_update(self, index: int, key: bytes, value: bytes) -> "Node":
+    assert self.type == NodeType.LEAF
+    new = Node(NodeType.LEAF)
+    for i in range(index):
+      new.insert_data(i, self.get(i).key, self.get(i).value)
+      new.set_child(i, self.get_child(i))
+    new.insert_data(index, key, value)
+    new.set_child(index, self.get_child(index))
+    for i in range(index + 1, self.nkeys):
+      new.insert_data(i, self.get(i).key, self.get(i).value)
+      new.set_child(i, self.get_child(i))
+    return new
 
-  @property
-  def n_keys(self) -> int:
-    return len(self._keys)
+  def leaf_delete(self, index: int) -> "Node":
+    new = Node(self.type)
+    for i in range(index):
+      new.insert_data(i, self.get(i).key, self.get(i).value)
+      new.set_child(i, self.get_child(i))
+    for i in range(index + 1, self.nkeys):
+      new.insert_data(i - 1, self.get(i).key, self.get(i).value)
+      new.set_child(i - 1, self.get_child(i))
+    return new
 
-  @property
-  def n_child(self) -> int:
-    """
-    Return the number of children in the node.
-    """
-    return len(self._children)
+  def split2(self) -> Tuple["Node", "Node"]:
+    lkeys = (self.nkeys + 1) // 2
+    rkeys = self.nkeys - lkeys
+    left = Node(self.type)
+    right = Node(self.type)
+    for i in range(lkeys):
+      left.insert_data(i, self.get(i).key, self.get(i).value)
+      left.set_child(i, self.get_child(i))
+    for i in range(rkeys):
+      right.insert_data(i, self.get(lkeys + i).key, self.get(lkeys + i).value)
+      right.set_child(i, self.get_child(lkeys + i))
+    assert right.total_bytes <= PAGE_SIZE
+    return left, right
 
-  @property
-  def total_bytes(self) -> int:
-    return 1 + 8 + 8 + 8 * len(self._children) + sum(
-        2 + len(k) for k in self._keys
-    )
+  def split3(self) -> List["Node"]:
+    if self.total_bytes <= PAGE_SIZE:
+      return [self]
+    left, right = self.split2()
+    if left.total_bytes <= PAGE_SIZE:
+      return [left, right]
+    left, mid = left.split2()
+    assert left.total_bytes <= PAGE_SIZE
+    return [left, mid, right]
 
-  def serialize(self) -> bytes:
-    data = binary.bytes1(self.type.value)
-    data += binary.bytes8(self.n_keys) + binary.bytes8(self.n_child)
-    for child in self._children:
-      data += binary.bytes8(child)
-    for key in self._keys:
-      data += binary.bytes2(len(key)) + key
-    return data
+  def merge(self, right: "Node") -> "Node":
+    new = Node(self.type)
+    for i in range(self.nkeys):
+      new.insert_data(i, self.get(i).key, self.get(i).value)
+      new.set_child(i, self.get_child(i))
+    for i in range(right.nkeys):
+      new.insert_data(i + self.nkeys, right.get(i).key, right.get(i).value)
+      new.set_child(i + self.nkeys, right.get_child(i))
+    return new
 
-  @staticmethod
-  def deserialize(data: bytes) -> "InternalNode":
-    node_type = NodeType(binary.uint8(data[:1]))
-    assert node_type == NodeType.INTERNAL
-    node = InternalNode()
-    n_keys = binary.uint64(data[1:9])
-    n_child = binary.uint64(data[9:17])
-    data = data[17:]
-    for i in range(n_child):
-      child_id = binary.uint64(data[:8])
-      node.insert_child(i, child_id)
-      data = data[8:]
-    for i in range(n_keys):
-      key_length = binary.uint16(data[:2])
-      node.insert_key(i, data[2: 2 + key_length])
-      data = data[2 + key_length:]
-    return node
-
-  def insert_child(self, index: int, child_id: int) -> None:
-    """
-    Insert a child at the specified index.
-    """
-    assert 0 <= index <= len(self._children)
-    self._children.insert(index, child_id)
-
-  def insert_key(self, index: int, key: bytes) -> None:
-    """
-    Insert a key at the specified index.
-    """
-    assert 0 <= index <= len(self._keys)
-    self._keys.insert(index, key)
+  def replace2kid(self, index: int, child: int, key: bytes) -> "Node":
+    new = Node(self.type)
+    for i in range(index):
+      new.insert_data(i, self.get(i).key, self.get(i).value)
+      new.set_child(i, self.get_child(i))
+    new.insert_data(index, key, b"")
+    new.set_child(index, child)
+    for i in range(index + 2, self.nkeys):
+      new.insert_data(i - 1, self.get(i).key, self.get(i).value)
+      new.set_child(i - 1, self.get_child(i))
+    return new
