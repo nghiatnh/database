@@ -66,7 +66,7 @@ class Node:
   @staticmethod
   def deserialize(data: bytes) -> "Node":
     node = Node(NodeType(binary.uint8(data[:1])))
-    assert node.type != NodeType.NULL
+    assert node.type in [NodeType.LEAF, NodeType.INTERNAL]
     nkeys = binary.uint64(data[1:9])
     child_data = data[9:9 + 8 * nkeys]
     data = data[9 + 8 * nkeys:]

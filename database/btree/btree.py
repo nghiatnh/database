@@ -18,12 +18,12 @@ class BTree:
     self._del: Callable[[int,], None]
 
   def _add_node(self, node: Node, idx: int, dot: graphviz.Digraph):
-    dot.node(str(id(node)), f"{idx} ({node.type.name}): {node.get(0).key[:5]}")
+    dot.node(str(idx), f"{idx} ({node.type.name}): {node.get(0).key[:5]}")
     for i in range(node.nkeys):
       child = node.get_child(i)
       if child != 0:
         self._add_node(self._get(child), child, dot)
-        dot.edge(str(id(node)), str(id(self._get(child))))
+        dot.edge(str(idx), str(child))
 
   def _should_merge(
       self,
@@ -60,8 +60,8 @@ class BTree:
       new.insert_data(index + i, child.get(0).key, b'')
       new.set_child(index + i, self._new(child))
     for i in range(index + 1, node.nkeys):
-      new.insert_data(i + len(children), node.get(i).key, node.get(i).value)
-      new.set_child(i + len(children), node.get_child(i))
+      new.insert_data(i + len(children) - 1, node.get(i).key, node.get(i).value)
+      new.set_child(i + len(children) - 1, node.get_child(i))
     return new
 
   def _internal_node_insert(

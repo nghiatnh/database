@@ -9,6 +9,7 @@ class NodeType(Enum):
   NULL = 0
   LEAF = 1
   INTERNAL = 2
+  FREE = 3
 
 
 class MergeDir(Enum):
