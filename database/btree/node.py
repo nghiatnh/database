@@ -56,9 +56,9 @@ class Node:
   def serialize(self) -> bytes:
     data = binary.bytes1(self.type.value) + binary.bytes8(self.nkeys)
     for i in range(self.nkeys):
-      data += binary.bytes8(self._data[i].child)
+      data += binary.bytes8(self.get_child(i))
     for i in range(self.nkeys):
-      data_i = self._data[i]
+      data_i = self.get(i)
       data += binary.bytes2(len(data_i.key)) + binary.bytes2(len(data_i.value))
       data += data_i.key + data_i.value
     return data
@@ -68,7 +68,6 @@ class Node:
     node = Node(NodeType(binary.uint8(data[:1])))
     assert node.type != NodeType.NULL
     nkeys = binary.uint64(data[1:9])
-    data = data[9:]
     child_data = data[9:9 + 8 * nkeys]
     data = data[9 + 8 * nkeys:]
     for i in range(nkeys):
@@ -110,8 +109,8 @@ class Node:
       new.set_child(i, self.get_child(i))
     new.insert_data(index, key, value)
     for i in range(index, self.nkeys):
-      new.set_child(i + 1, self.get_child(i))
       new.insert_data(i + 1, self.get(i).key, self.get(i).value)
+      new.set_child(i + 1, self.get_child(i))
     return new
 
   def leaf_update(self, index: int, key: bytes, value: bytes) -> "Node":

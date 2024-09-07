@@ -115,12 +115,12 @@ class BTree:
 
   def set_callbacks(
       self,
-      get: Callable[[int,], Node],
       new: Callable[[Node,], int],
+      get: Callable[[int,], Node],
       delete: Callable[[int,], None],
   ):
-    self._get = get
     self._new = new
+    self._get = get
     self._del = delete
 
   def delete(self, key: bytes) -> bool:
@@ -162,6 +162,17 @@ class BTree:
       self._root = self._new(root)
     else:
       self._root = self._new(splitted[0])
+
+  def get(self, key: bytes) -> bytes:
+    assert len(key) != 0
+    assert len(key) <= MAX_KEY_SIZE
+    if self._root == 0:
+      raise KeyError("Key not found")
+    node = self._get(self._root)
+    idx = node.lookup_le(key)
+    if key == node.get(idx).key:
+      return node.get(idx).value
+    raise KeyError("Key not found")
 
   def render_tree(self, filename: str):
     """
