@@ -10,8 +10,8 @@ from database.btree.constants import MAX_VALUE_SIZE
 
 
 class BTree:
-  def __init__(self):
-    self._root: int = 0
+  def __init__(self, root: int = 0) -> None:
+    self.root: int = root
     # Callbacks
     self._get: Callable[[int,], Node]
     self._new: Callable[[Node,], int]
@@ -126,31 +126,31 @@ class BTree:
   def delete(self, key: bytes) -> bool:
     assert len(key) != 0
     assert len(key) <= MAX_KEY_SIZE
-    if self._root == 0:
+    if self.root == 0:
       return False
 
-    updated = self._delete(self._get(self._root), key)
+    updated = self._delete(self._get(self.root), key)
     if updated.type == NodeType.NULL:
       return False
-    self._del(self._root)
+    self._del(self.root)
     if updated.type == NodeType.INTERNAL and updated.nkeys == 1:
-      self._root = updated.get_child(0)
+      self.root = updated.get_child(0)
     else:
-      self._root = self._new(updated)
+      self.root = self._new(updated)
     return True
 
   def insert(self, key: bytes, value: bytes):
     assert len(key) != 0
     assert len(key) <= MAX_KEY_SIZE
     assert len(value) <= MAX_VALUE_SIZE
-    if self._root == 0:
+    if self.root == 0:
       root = Node(NodeType.LEAF)
       root.insert_data(0, b'', b'')
       root.insert_data(1, key, value)
-      self._root = self._new(root)
+      self.root = self._new(root)
       return
-    node = self._get(self._root)
-    self._del(self._root)
+    node = self._get(self.root)
+    self._del(self.root)
     node = self._insert(node, key, value)
     splitted = node.split3()
     if len(splitted) > 1:
@@ -159,16 +159,16 @@ class BTree:
         child, key = self._new(node), node.get(0).key
         root.insert_data(i, key, b'')
         root.set_child(i, child)
-      self._root = self._new(root)
+      self.root = self._new(root)
     else:
-      self._root = self._new(splitted[0])
+      self.root = self._new(splitted[0])
 
   def get(self, key: bytes) -> bytes:
     assert len(key) != 0
     assert len(key) <= MAX_KEY_SIZE
-    if self._root == 0:
+    if self.root == 0:
       raise KeyError("Key not found")
-    node = self._get(self._root)
+    node = self._get(self.root)
     idx = node.lookup_le(key)
     if key == node.get(idx).key:
       return node.get(idx).value
@@ -179,5 +179,5 @@ class BTree:
     Render the abstract syntax tree to a file using graphviz.
     """
     dot = graphviz.Digraph()
-    self._add_node(self._get(self._root), self._root, dot)
+    self._add_node(self._get(self.root), self.root, dot)
     dot.render(filename, format="png", view=True)
