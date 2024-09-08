@@ -1,8 +1,11 @@
+from database.constants import CompareOP
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 from enum import Enum
 import json
 
+from database.btree.biter import BIter
+from database.btree.biter import _cmp_ok
 from database.kvstore import KVStore
 from database.utils import binary
 
@@ -151,6 +154,24 @@ TDEF_TABLE = TableDef(
 )
 
 
+def _decode_values(data: bytes, types: List[ColumnType]) -> List[Value]:
+  values: List[Value] = []
+  for t in types:
+    match t:
+      case ColumnType.BYTES:
+        i = data.find(b"\0")
+        values.append(Value(
+            t, data[:i].replace(b"\1\1", b"\0").replace(b"\1\2", b"\1"), 0
+        ))
+        data = data[i + 1:]
+      case ColumnType.INT:
+        values.append(Value(t, b'', binary.uint64(data)))
+        data = data[8:]
+      case _:
+        raise ValueError('Invalid column type')
+  return values
+
+
 class Database:
   def __init__(self, path: str) -> None:
     self.path = path
@@ -184,23 +205,6 @@ class Database:
           raise ValueError('Invalid column type')
     return result
 
-  def _decode_values(self, data: bytes, types: List[ColumnType]) -> List[Value]:
-    values: List[Value] = []
-    for t in types:
-      match t:
-        case ColumnType.BYTES:
-          i = data.find(b"\0")
-          values.append(Value(
-              t, data[:i].replace(b"\1\1", b"\0").replace(b"\1\2", b"\1"), 0
-          ))
-          data = data[i + 1:]
-        case ColumnType.INT:
-          values.append(Value(t, b'', binary.uint64(data)))
-          data = data[8:]
-        case _:
-          raise ValueError('Invalid column type')
-    return values
-
   # reorder a record and check for missing columns.
   # n == tdef.PKeys: record is exactly a primary key
   # n == len(tdef.Cols): record contains all columns
@@ -222,17 +226,16 @@ class Database:
     return values
 
   def _get(self, tdef: TableDef, rec: Record) -> bool:
-    values = self._check_record(tdef, rec, tdef.pkeys)
-    key = self._encode_key(tdef.prefix, values)
-    try:
-      value = self.kv.get(key)
-    except KeyError:
-      return False
-    rec.columns.extend(tdef.columns[tdef.pkeys:])
-    rec.values.extend(
-        self._decode_values(value, [x.type for x in tdef.columns[tdef.pkeys:]])
-    )
-    return True
+    sc = Scanner()
+    sc.cmp1 = CompareOP.GE
+    sc.cmp2 = CompareOP.LE
+    sc.key1 = rec
+    sc.key2 = rec
+    self._scan(tdef, sc)
+    if sc.valid():
+      sc.deref(rec)
+      return True
+    return False
 
   def _update(self, tdef: TableDef, rec: Record, mode: UpdateMode):
     values = self._check_record(tdef, rec, len(tdef.columns))
@@ -250,6 +253,15 @@ class Database:
     if tdef is None:
       raise KeyError("Table not found")
     self._update(tdef, rec, mode)
+
+  def _scan(self, tdef: TableDef, req: "Scanner"):
+    assert req.cmp1.value * req.cmp2.value < 0
+    values1 = self._check_record(tdef, req.key1, tdef.pkeys)
+    values2 = self._check_record(tdef, req.key2, tdef.pkeys)
+    req.tdef = tdef
+    key_start = self._encode_key(tdef.prefix, values1[:tdef.pkeys])
+    req.key_end = self._encode_key(tdef.prefix, values2[:tdef.pkeys])
+    req.it = BIter.seek(self.kv._tree, key_start, req.cmp1)
 
   def get(self, table: str, rec: Record):
     tdef = self._get_table_def(table)
@@ -291,8 +303,46 @@ class Database:
     table.add_str("def", json.dumps(tdef.to_dict()))
     self._update(TDEF_TABLE, table, UpdateMode.UPSERT)
 
+  def scan(self, table: str, req: "Scanner"):
+    tdef = self._get_table_def(table)
+    if tdef is None:
+      raise KeyError("Table not found")
+    return self._scan(tdef, req)
+
   def open(self):
     self.kv.open()
 
   def close(self):
     self.kv.close()
+
+
+class Scanner:
+  def __init__(self) -> None:
+    self.cmp1: CompareOP = CompareOP.GE
+    self.cmp2: CompareOP = CompareOP.LE
+    self.key1: Record = Record()
+    self.key2: Record = Record()
+    self.tdef: TableDef
+    self.it: BIter
+    self.key_end: bytes
+
+  def valid(self) -> bool:
+    if not self.it.valid():
+      return False
+    key, _ = self.it.deref()
+    return _cmp_ok(key, self.cmp2, self.key_end)
+
+  def next(self):
+    assert self.valid()
+    if self.cmp1 in [CompareOP.GE, CompareOP.GT]:
+      self.it.next()
+    else:
+      self.it.prev()
+
+  def deref(self, rec: Record):
+    _, value = self.it.deref()
+    values = _decode_values(value,
+                            [x.type
+                             for x in self.tdef.columns[self.tdef.pkeys:]])
+    rec.columns.extend(self.tdef.columns[self.tdef.pkeys:])
+    rec.values.extend(values)
