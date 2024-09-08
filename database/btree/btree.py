@@ -1,23 +1,23 @@
 from typing import Callable, List, Tuple
 import graphviz
 
-from database.btree.node import Node
-from database.btree.constants import NodeType
+from database.btree.node import BNode
 from database.btree.constants import MergeDir
-from database.btree.constants import PAGE_SIZE
-from database.btree.constants import MAX_KEY_SIZE
-from database.btree.constants import MAX_VALUE_SIZE
+from database.constants import NodeType
+from database.constants import PAGE_SIZE
+from database.constants import MAX_KEY_SIZE
+from database.constants import MAX_VALUE_SIZE
 
 
 class BTree:
   def __init__(self, root: int = 0) -> None:
     self.root: int = root
     # Callbacks
-    self._get: Callable[[int,], Node]
-    self._new: Callable[[Node,], int]
+    self._get: Callable[[int,], BNode]
+    self._new: Callable[[BNode,], int]
     self._del: Callable[[int,], None]
 
-  def _add_node(self, node: Node, idx: int, dot: graphviz.Digraph):
+  def _add_node(self, node: BNode, idx: int, dot: graphviz.Digraph):
     dot.node(str(idx), f"{idx} ({node.type.name}): {node.get(0).key[:5]}")
     for i in range(node.nkeys):
       child = node.get_child(i)
@@ -27,12 +27,12 @@ class BTree:
 
   def _should_merge(
       self,
-      node: Node,
+      node: BNode,
       index: int,
-      updated: Node,
-  ) -> Tuple[MergeDir, Node]:
+      updated: BNode,
+  ) -> Tuple[MergeDir, BNode]:
     if updated.total_bytes > PAGE_SIZE / 4:
-      return MergeDir.NONE, Node(NodeType.NULL)
+      return MergeDir.NONE, BNode(NodeType.NULL)
     if index > 0:
       sibling = self._get(node.get_child(index - 1))
       merged = sibling.total_bytes + updated.total_bytes - 4
@@ -43,16 +43,16 @@ class BTree:
       merged = sibling.total_bytes + updated.total_bytes - 4
       if merged <= PAGE_SIZE:
         return MergeDir.RIGHT, sibling
-    return MergeDir.NONE, Node(NodeType.NULL)
+    return MergeDir.NONE, BNode(NodeType.NULL)
 
   def _internal_replace_child(
       self,
-      node: Node,
+      node: BNode,
       index: int,
-      children: List[Node],
-  ) -> Node:
+      children: List[BNode],
+  ) -> BNode:
     assert node.type == NodeType.INTERNAL
-    new = Node(node.type)
+    new = BNode(node.type)
     for i in range(index):
       new.insert_data(i, node.get(i).key, node.get(i).value)
       new.set_child(i, node.get_child(i))
@@ -65,7 +65,7 @@ class BTree:
     return new
 
   def _internal_node_insert(
-          self, node: Node, idx: int, key: bytes, value: bytes) -> Node:
+          self, node: BNode, idx: int, key: bytes, value: bytes) -> BNode:
     assert node.type == NodeType.INTERNAL
     child_id = node.get_child(idx)
     child = self._get(child_id)
@@ -74,7 +74,7 @@ class BTree:
     splited = child.split3()
     return self._internal_replace_child(node, idx, splited)
 
-  def _internal_node_delete(self, node: Node, idx: int, key: bytes):
+  def _internal_node_delete(self, node: BNode, idx: int, key: bytes):
     assert node.type == NodeType.INTERNAL
     child_id = node.get_child(idx)
     updated = self._delete(self._get(child_id), key)
@@ -93,7 +93,7 @@ class BTree:
     assert updated.nkeys > 0
     return self._internal_replace_child(node, idx, [updated])
 
-  def _insert(self, node: Node, key: bytes, value: bytes) -> Node:
+  def _insert(self, node: BNode, key: bytes, value: bytes) -> BNode:
     idx = node.lookup_le(key)
     if node.type == NodeType.LEAF:
       if key == node.get(idx).key:
@@ -103,20 +103,24 @@ class BTree:
       return self._internal_node_insert(node, idx, key, value)
     raise ValueError("Invalid node type")
 
-  def _delete(self, node: Node, key: bytes) -> Node:
+  def _delete(self, node: BNode, key: bytes) -> BNode:
     idx = node.lookup_le(key)
     if node.type == NodeType.LEAF:
       if key != node.get(idx).key:
-        return Node(NodeType.NULL)
+        return BNode(NodeType.NULL)
       return node.leaf_delete(idx)
     if node.type == NodeType.INTERNAL:
       return self._internal_node_delete(node, idx, key)
     raise ValueError("Invalid node type")
 
+  # ========================================================================= #
+  # Public API                                                                #
+  # ========================================================================= #
+
   def set_callbacks(
       self,
-      new: Callable[[Node,], int],
-      get: Callable[[int,], Node],
+      new: Callable[[BNode,], int],
+      get: Callable[[int,], BNode],
       delete: Callable[[int,], None],
   ):
     self._new = new
@@ -144,7 +148,7 @@ class BTree:
     assert len(key) <= MAX_KEY_SIZE
     assert len(value) <= MAX_VALUE_SIZE
     if self.root == 0:
-      root = Node(NodeType.LEAF)
+      root = BNode(NodeType.LEAF)
       root.insert_data(0, b'', b'')
       root.insert_data(1, key, value)
       self.root = self._new(root)
@@ -154,7 +158,7 @@ class BTree:
     node = self._insert(node, key, value)
     splitted = node.split3()
     if len(splitted) > 1:
-      root = Node(NodeType.INTERNAL)
+      root = BNode(NodeType.INTERNAL)
       for i, node in enumerate(splitted):
         child, key = self._new(node), node.get(0).key
         root.insert_data(i, key, b'')
@@ -174,9 +178,9 @@ class BTree:
       return node.get(idx).value
     raise KeyError("Key not found")
 
-  def render_tree(self, filename: str):
+  def render(self, filename: str):
     """
-    Render the abstract syntax tree to a file using graphviz.
+    Render the BTree to a file using graphviz.
     """
     dot = graphviz.Digraph()
     self._add_node(self._get(self.root), self.root, dot)

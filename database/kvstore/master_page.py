@@ -1,32 +1,32 @@
 from database.utils import binary
-from database.kvstore.constants import MASTER_SIG
+from database.constants import MASTER_SIG
 
 
 class MasterPage:
   # Master page structure:
-  # |-------------------------------|
-  # | signature | root | used | top |
-  # | 16b       | 8b   | 8b   | 8b  |
-  # |-------------------------------|
+  # |--------------------------------|
+  # | signature | root | used | head |
+  # | 16b       | 8b   | 8b   | 8b   |
+  # |--------------------------------|
 
   def __init__(
       self,
       sig: bytes,
       root: int,
       used: int,
-      top: int,
+      head: int,
   ) -> None:
     self.sig = sig
     self.root = root
     self.used = used
-    self.top = top
+    self.head = head
 
   def serialize(self) -> bytes:
     return (
         self.sig +
         binary.bytes8(self.root) +
         binary.bytes8(self.used) +
-        binary.bytes8(self.top)
+        binary.bytes8(self.head)
     )
 
   @staticmethod
