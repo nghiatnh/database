@@ -1,175 +1,21 @@
-from database.constants import CompareOP
-from typing import List, Dict, Optional
-from dataclasses import dataclass
-from enum import Enum
+from typing import List, Dict, Optional, Generator
 import json
 
-from database.btree.biter import BIter
-from database.btree.biter import _cmp_ok
+from database.btree import DeleteReq, InsertReq
+from database.btree import BIter
 from database.kvstore import KVStore
+from database.db.value import Value
+from database.db.record import Record
+from database.db.table_def import TableDef
+from database.db.table_def import TDEF_META
+from database.db.table_def import TDEF_TABLE
+from database.db.scanner import Scanner
+from database.db import str_utils
 from database.utils import binary
-
-
-class UpdateMode(Enum):
-  INSERT_ONLY = 1
-  UPDATE_ONLY = 2
-  UPSERT = 3
-
-
-class ColumnType(Enum):
-  ERROR = 0
-  BYTES = 1
-  INT = 2
-
-
-@dataclass
-class Value:
-  type: ColumnType
-  _bytes: bytes
-  _int: int
-
-  @property
-  def integer(self) -> int:
-    if self.type != ColumnType.INT:
-      raise ValueError('Not an integer')
-    return self._int
-
-  @property
-  def string(self) -> str:
-    if self.type != ColumnType.BYTES:
-      raise ValueError('Not a string')
-    return self._bytes.decode('utf-8')
-
-  @property
-  def bytes_(self) -> bytes:
-    if self.type != ColumnType.BYTES:
-      raise ValueError('Not bytes')
-    return self._bytes
-
-  def set_int(self, value: int) -> None:
-    self._int = value
-    self.type = ColumnType.INT
-
-  def set_bytes(self, value: bytes) -> None:
-    self._bytes = value
-    self.type = ColumnType.BYTES
-
-  def set_string(self, value: str) -> None:
-    self._bytes = value.encode('utf-8')
-    self.type = ColumnType.BYTES
-
-
-@dataclass
-class Column:
-  name: str
-  type: ColumnType
-
-
-class Record:
-  def __init__(self) -> None:
-    self.columns: List[Column] = []
-    self.values: List[Value] = []
-
-  def __repr__(self) -> str:
-    return ("Record(" +
-            ", ".join(
-                f"{col.name}={val.integer if col.type == ColumnType.INT else val.string}"
-                for col, val in zip(self.columns, self.values)
-            ) + ")")
-
-  def set_value(self, column: str, value: Value):
-    for i, col in enumerate(self.columns):
-      if col.name == column:
-        assert value.type == col.type
-        self.values[i] = value
-        return
-    raise KeyError("Invalid column")
-
-  def add_str(self, column: str, value: str) -> "Record":
-    return self.add_bytes(column, value.encode('utf-8'))
-
-  def add_bytes(self, column: str, value: bytes) -> "Record":
-    self.columns.append(Column(column, ColumnType.BYTES))
-    self.values.append(Value(ColumnType.BYTES, value, 0))
-    return self
-
-  def add_int(self, column: str, value: int) -> "Record":
-    self.columns.append(Column(column, ColumnType.INT))
-    self.values.append(Value(ColumnType.INT, b'', value))
-    return self
-
-  def get(self, column: str) -> Value:
-    for col, val in zip(self.columns, self.values):
-      if col.name == column:
-        return val
-    raise ValueError('Column not found')
-
-
-@dataclass
-class TableDef:
-  name: str
-  columns: List[Column]
-  pkeys: int
-  prefix: int
-
-  @property
-  def n_columns(self) -> int:
-    return len(self.columns)
-
-  @staticmethod
-  def from_dict(data: dict) -> "TableDef":
-    return TableDef(
-        data["name"],
-        [Column(x["name"], ColumnType(x["type"])) for x in data["columns"]],
-        data["pkeys"],
-        data["prefix"],
-    )
-
-  def to_dict(self) -> dict:
-    return {
-        "name": self.name,
-        "columns": [{
-            "name": x.name,
-            "type": x.type.value,
-        } for x in self.columns],
-        "pkeys": self.pkeys,
-        "prefix": self.prefix,
-    }
-
-
-TDEF_META = TableDef(
-    name='@meta',
-    columns=[
-        Column("key", ColumnType.BYTES), Column("value", ColumnType.BYTES)
-    ],
-    pkeys=1,
-    prefix=1,
-)
-
-TDEF_TABLE = TableDef(
-    name='@table',
-    columns=[Column("name", ColumnType.BYTES), Column("def", ColumnType.BYTES)],
-    pkeys=1,
-    prefix=2,
-)
-
-
-def _decode_values(data: bytes, types: List[ColumnType]) -> List[Value]:
-  values: List[Value] = []
-  for t in types:
-    match t:
-      case ColumnType.BYTES:
-        i = data.find(b"\0")
-        values.append(Value(
-            t, data[:i].replace(b"\1\1", b"\0").replace(b"\1\2", b"\1"), 0
-        ))
-        data = data[i + 1:]
-      case ColumnType.INT:
-        values.append(Value(t, b'', binary.uint64(data)))
-        data = data[8:]
-      case _:
-        raise ValueError('Invalid column type')
-  return values
+from database.constants import CompareOP
+from database.constants import IndexOP
+from database.constants import UpdateMode
+from database.constants import ColumnType
 
 
 class Database:
@@ -181,29 +27,11 @@ class Database:
   def _get_table_def(self, name: str) -> Optional[TableDef]:
     if name in self.tables:
       return self.tables[name]
-    rec = Record().add_str("name", name)
+    rec = Record().add_string("name", name)
     found = self._get(TDEF_TABLE, rec)
     if not found:
       return None
-    return TableDef.from_dict(json.loads(rec.get("def").string))
-
-  def _escape_string(self, s: bytes) -> bytes:
-    return s.replace(b"\1", b"\1\2").replace(b"\0", b"\1\1")
-
-  def _encode_key(self, prefix: int, values: List[Value]) -> bytes:
-    return binary.bytes4(prefix) + self._encode_values(values)
-
-  def _encode_values(self, values: List[Value]) -> bytes:
-    result = b''
-    for val in values:
-      match val.type:
-        case ColumnType.BYTES:
-          result += self._escape_string(val.bytes_) + b"\0"
-        case ColumnType.INT:
-          result += binary.bytes8(val.integer)
-        case _:
-          raise ValueError('Invalid column type')
-    return result
+    return TableDef.from_dict(json.loads(rec["def"].string))
 
   # reorder a record and check for missing columns.
   # n == tdef.PKeys: record is exactly a primary key
@@ -226,27 +54,47 @@ class Database:
     return values
 
   def _get(self, tdef: TableDef, rec: Record) -> bool:
-    sc = Scanner()
-    sc.cmp1 = CompareOP.GE
-    sc.cmp2 = CompareOP.LE
-    sc.key1 = rec
-    sc.key2 = rec
+    sc = Scanner(CompareOP.GE, CompareOP.LE, rec, rec)
     self._scan(tdef, sc)
     if sc.valid():
-      sc.deref(rec)
+      if sc.deref(rec):
+        found = self._get(tdef, rec)
+        assert found
       return True
     return False
 
   def _update(self, tdef: TableDef, rec: Record, mode: UpdateMode):
     values = self._check_record(tdef, rec, len(tdef.columns))
-    key = self._encode_key(tdef.prefix, values[:tdef.pkeys])
-    value = self._encode_values(values[tdef.pkeys:])
-    self.kv.set(key, value)
+    key = str_utils.encode_key(tdef.prefix, values[:tdef.pkeys])
+    value = str_utils.encode_values(values[tdef.pkeys:])
+    req = InsertReq(key=key, value=value, mode=mode)
+    self.kv.set(req)
+    if not req.updated or len(tdef.indexes) == 0:
+      return
+    if req.updated and not req.added:
+      values[tdef.pkeys:] = str_utils.decode_values(
+          req.old, [x.type for x in tdef.columns[tdef.pkeys:]])
+      tmp = Record()
+      tmp.columns = tdef.columns
+      tmp.values = values
+      self._index_op(tdef, tmp, IndexOP.DELETE)
+    if req.updated:
+      self._index_op(tdef, rec, IndexOP.ADD)
 
   def _delete(self, tdef: TableDef, rec: Record):
     values = self._check_record(tdef, rec, tdef.pkeys)
-    key = self._encode_key(tdef.prefix, values[:tdef.pkeys])
-    self.kv.delete(key)
+    key = str_utils.encode_key(tdef.prefix, values[:tdef.pkeys])
+    req = DeleteReq(key)
+    self.kv.delete(req)
+    if not req.deleted or len(tdef.indexes) == 0:
+      return
+    if req.deleted:
+      values[tdef.pkeys:] = str_utils.decode_values(
+          req.old, [x.type for x in tdef.columns[tdef.pkeys:]])
+      tmp = Record()
+      tmp.columns = tdef.columns
+      tmp.values = values
+      self._index_op(tdef, tmp, IndexOP.DELETE)
 
   def _set(self, table: str, rec: Record, mode: UpdateMode):
     tdef = self._get_table_def(table)
@@ -254,14 +102,31 @@ class Database:
       raise KeyError("Table not found")
     self._update(tdef, rec, mode)
 
-  def _scan(self, tdef: TableDef, req: "Scanner"):
-    assert req.cmp1.value * req.cmp2.value < 0
-    values1 = self._check_record(tdef, req.key1, tdef.pkeys)
-    values2 = self._check_record(tdef, req.key2, tdef.pkeys)
-    req.tdef = tdef
-    key_start = self._encode_key(tdef.prefix, values1[:tdef.pkeys])
-    req.key_end = self._encode_key(tdef.prefix, values2[:tdef.pkeys])
-    req.it = BIter.seek(self.kv._tree, key_start, req.cmp1)
+  def _scan(self, tdef: TableDef, sc: "Scanner"):
+    assert sc.cmp1.value * sc.cmp2.value < 0
+    # values1 = self._check_record(tdef, sc.key1, tdef.pkeys)
+    # values2 = self._check_record(tdef, sc.key2, tdef.pkeys)
+    index_no = tdef.find_index([x.name for x in sc.key1.columns])
+    index, prefix = [x.name for x in tdef.columns[:tdef.pkeys]], tdef.prefix
+    if index_no >= 0:
+      index, prefix = tdef.indexes[index_no], tdef.index_prefixes[index_no]
+    sc.tdef = tdef
+    sc.index_no = index_no
+    key_start = str_utils.encode_key_partial(
+        prefix, sc.key1.values, tdef, index, sc.cmp1)
+    sc.key_end = str_utils.encode_key_partial(
+        prefix, sc.key2.values, tdef, index, sc.cmp2)
+    sc.it = BIter.seek(self.kv.tree, key_start, sc.cmp1)
+
+  def _index_op(self, tdef: TableDef, rec: Record, op: IndexOP):
+    for i, index in enumerate(tdef.indexes):
+      key = str_utils.encode_key(
+          tdef.index_prefixes[i], [rec[c] for c in index])
+      match op:
+        case IndexOP.ADD:
+          self.kv.set(InsertReq(key, b"", UpdateMode.UPSERT))
+        case IndexOP.DELETE:
+          self.kv.delete(DeleteReq(key))
 
   def get(self, table: str, rec: Record):
     tdef = self._get_table_def(table)
@@ -285,64 +150,43 @@ class Database:
     self._delete(tdef, rec)
 
   def table_new(self, tdef: TableDef):
-    table = Record().add_str("name", tdef.name)
+    tdef.check()
+    table = Record().add_string("name", tdef.name)
     found = self._get(TDEF_TABLE, table)
     if found:
       raise KeyError("Table existed")
     assert tdef.prefix == 0
     tdef.prefix = 3
-    meta = Record().add_str("key", "next_prefix")
+    meta = Record().add_string("key", "next_prefix")
     found = self._get(TDEF_META, meta)
     if found:
-      tdef.prefix = binary.uint32(meta.get("value").bytes_)
+      tdef.prefix = binary.uint32(meta["value"].bytes_)
     else:
       meta.add_bytes("value", binary.bytes4(0))
-    meta.set_value("value", Value(ColumnType.BYTES,
-                   binary.bytes4(tdef.prefix + 1), 0))
+    for i in range(len(tdef.indexes)):
+      prefix = tdef.prefix + 1 + i
+      tdef.index_prefixes.append(prefix)
+    ntree = 1 + len(tdef.indexes)
+    meta["value"] = Value(
+        ColumnType.BYTES, binary.bytes4(tdef.prefix + ntree), 0)
     self._update(TDEF_META, meta, UpdateMode.UPSERT)
-    table.add_str("def", json.dumps(tdef.to_dict()))
+    table.add_string("def", json.dumps(tdef.to_dict()))
     self._update(TDEF_TABLE, table, UpdateMode.UPSERT)
 
-  def scan(self, table: str, req: "Scanner"):
+  def scan(self, table: str, sc: "Scanner") -> Generator[Record, None, None]:
     tdef = self._get_table_def(table)
     if tdef is None:
       raise KeyError("Table not found")
-    return self._scan(tdef, req)
+    self._scan(tdef, sc)
+    while sc.valid():
+      rec = Record()
+      if sc.deref(rec):
+        self._get(tdef, rec)
+        yield rec
+      sc.next()
 
   def open(self):
     self.kv.open()
 
   def close(self):
     self.kv.close()
-
-
-class Scanner:
-  def __init__(self) -> None:
-    self.cmp1: CompareOP = CompareOP.GE
-    self.cmp2: CompareOP = CompareOP.LE
-    self.key1: Record = Record()
-    self.key2: Record = Record()
-    self.tdef: TableDef
-    self.it: BIter
-    self.key_end: bytes
-
-  def valid(self) -> bool:
-    if not self.it.valid():
-      return False
-    key, _ = self.it.deref()
-    return _cmp_ok(key, self.cmp2, self.key_end)
-
-  def next(self):
-    assert self.valid()
-    if self.cmp1 in [CompareOP.GE, CompareOP.GT]:
-      self.it.next()
-    else:
-      self.it.prev()
-
-  def deref(self, rec: Record):
-    _, value = self.it.deref()
-    values = _decode_values(value,
-                            [x.type
-                             for x in self.tdef.columns[self.tdef.pkeys:]])
-    rec.columns.extend(self.tdef.columns[self.tdef.pkeys:])
-    rec.values.extend(values)

@@ -1,12 +1,31 @@
 from typing import Callable, List, Tuple
+from dataclasses import dataclass
 import graphviz
 
 from database.btree.node import BNode
 from database.btree.constants import MergeDir
+from database.constants import UpdateMode
 from database.constants import NodeType
 from database.constants import PAGE_SIZE
 from database.constants import MAX_KEY_SIZE
 from database.constants import MAX_VALUE_SIZE
+
+
+@dataclass
+class InsertReq:
+  key: bytes
+  value: bytes
+  mode: UpdateMode
+  added: bool = False
+  updated: bool = False
+  old: bytes = b""
+
+
+@dataclass
+class DeleteReq:
+  key: bytes
+  deleted: bool = False
+  old: bytes = b""
 
 
 class BTree:
@@ -57,7 +76,7 @@ class BTree:
       new.insert_data(i, node.get(i).key, node.get(i).value)
       new.set_child(i, node.get_child(i))
     for i, child in enumerate(children):
-      new.insert_data(index + i, child.get(0).key, b'')
+      new.insert_data(index + i, child.get(0).key, b"")
       new.set_child(index + i, self._new(child))
     for i in range(index + 1, node.nkeys):
       new.insert_data(i + len(children) - 1, node.get(i).key, node.get(i).value)
@@ -65,19 +84,23 @@ class BTree:
     return new
 
   def _internal_node_insert(
-          self, node: BNode, idx: int, key: bytes, value: bytes) -> BNode:
+      self,
+      node: BNode,
+      idx: int,
+      req: InsertReq,
+  ) -> BNode:
     assert node.type == NodeType.INTERNAL
     child_id = node.get_child(idx)
     child = self._get(child_id)
     self._del(child_id)
-    child = self._insert(child, key, value)
+    child = self._insert(child, req)
     splited = child.split3()
     return self._internal_replace_child(node, idx, splited)
 
-  def _internal_node_delete(self, node: BNode, idx: int, key: bytes):
+  def _internal_node_delete(self, node: BNode, idx: int, req: DeleteReq):
     assert node.type == NodeType.INTERNAL
     child_id = node.get_child(idx)
-    updated = self._delete(self._get(child_id), key)
+    updated = self._delete(self._get(child_id), req)
     if updated.type == NodeType.NULL:
       return updated
     self._del(child_id)
@@ -93,24 +116,36 @@ class BTree:
     assert updated.nkeys > 0
     return self._internal_replace_child(node, idx, [updated])
 
-  def _insert(self, node: BNode, key: bytes, value: bytes) -> BNode:
-    idx = node.lookup_le(key)
+  def _insert(self, node: BNode, req: InsertReq) -> BNode:
+    idx = node.lookup_le(req.key)
     if node.type == NodeType.LEAF:
-      if key == node.get(idx).key:
-        return node.leaf_update(idx, key, value)
-      return node.leaf_insert(idx + 1, key, value)
+      if req.key == node.get(idx).key:
+        if req.mode == UpdateMode.INSERT_ONLY:
+          raise ValueError("Can not insert to existed data")
+        req.old = node.get(idx).value
+        req.added, req.updated = False, True
+        return node.leaf_update(idx, req.key, req.value)
+      if req.mode == UpdateMode.UPDATE_ONLY:
+        raise ValueError("Can not find the data to update")
+      req.old = b""
+      req.added, req.updated = True, True
+      return node.leaf_insert(idx + 1, req.key, req.value)
     if node.type == NodeType.INTERNAL:
-      return self._internal_node_insert(node, idx, key, value)
+      return self._internal_node_insert(node, idx, req)
     raise ValueError("Invalid node type")
 
-  def _delete(self, node: BNode, key: bytes) -> BNode:
-    idx = node.lookup_le(key)
+  def _delete(self, node: BNode, req: DeleteReq) -> BNode:
+    idx = node.lookup_le(req.key)
     if node.type == NodeType.LEAF:
-      if key != node.get(idx).key:
+      if req.key != node.get(idx).key:
+        req.old = b""
+        req.deleted = False
         return BNode(NodeType.NULL)
+      req.old = node.get(idx).value
+      req.deleted = True
       return node.leaf_delete(idx)
     if node.type == NodeType.INTERNAL:
-      return self._internal_node_delete(node, idx, key)
+      return self._internal_node_delete(node, idx, req)
     raise ValueError("Invalid node type")
 
   # ========================================================================= #
@@ -127,13 +162,13 @@ class BTree:
     self._get = get
     self._del = delete
 
-  def delete(self, key: bytes) -> bool:
-    assert len(key) != 0
-    assert len(key) <= MAX_KEY_SIZE
+  def delete(self, req: DeleteReq) -> bool:
+    assert len(req.key) != 0
+    assert len(req.key) <= MAX_KEY_SIZE
     if self.root == 0:
       return False
 
-    updated = self._delete(self._get(self.root), key)
+    updated = self._delete(self._get(self.root), req)
     if updated.type == NodeType.NULL:
       return False
     self._del(self.root)
@@ -143,25 +178,29 @@ class BTree:
       self.root = self._new(updated)
     return True
 
-  def insert(self, key: bytes, value: bytes):
-    assert len(key) != 0
-    assert len(key) <= MAX_KEY_SIZE
-    assert len(value) <= MAX_VALUE_SIZE
+  def insert(self, req: InsertReq):
+    assert len(req.key) != 0
+    assert len(req.key) <= MAX_KEY_SIZE
+    assert len(req.value) <= MAX_VALUE_SIZE
     if self.root == 0:
+      if req.mode == UpdateMode.UPDATE_ONLY:
+        raise ValueError("Can not update empty tree")
       root = BNode(NodeType.LEAF)
-      root.insert_data(0, b'', b'')
-      root.insert_data(1, key, value)
+      root.insert_data(0, b"", b"")
+      root.insert_data(1, req.key, req.value)
       self.root = self._new(root)
+      req.old = b""
+      req.added, req.updated = True, True
       return
     node = self._get(self.root)
     self._del(self.root)
-    node = self._insert(node, key, value)
+    node = self._insert(node, req)
     splitted = node.split3()
     if len(splitted) > 1:
       root = BNode(NodeType.INTERNAL)
       for i, node in enumerate(splitted):
         child, key = self._new(node), node.get(0).key
-        root.insert_data(i, key, b'')
+        root.insert_data(i, key, b"")
         root.set_child(i, child)
       self.root = self._new(root)
     else:

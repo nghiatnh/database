@@ -3,6 +3,8 @@ from typing import Dict, Optional, Union
 
 from database.btree import BNode
 from database.btree import BTree
+from database.btree.btree import InsertReq
+from database.btree.btree import DeleteReq
 from database.free_list.node import FreeNode
 from database.free_list import FreeList
 from database.kvstore.io import FileHandler
@@ -104,12 +106,16 @@ class KVStore:
   # Public API                                                                #
   # ========================================================================= #
 
+  @property
+  def tree(self) -> BTree:
+    return self._tree
+
   def open(self):
     try:
       if os.path.exists(self._file.path):
-        self._file.open('r+b')
+        self._file.open("r+b")
       else:
-        self._file.open('w+b')
+        self._file.open("w+b")
       self._tree = BTree()
       self._free_list = FreeList()
       self._tree.set_callbacks(self._page_new, self._page_get, self._page_del)
@@ -126,12 +132,13 @@ class KVStore:
   def get(self, key: bytes) -> bytes:
     return self._tree.get(key)
 
-  def set(self, key: bytes, value: bytes):
-    self._tree.insert(key, value)
-    self._flush()
+  def set(self, req: InsertReq):
+    self._tree.insert(req)
+    if req.updated:
+      self._flush()
 
-  def delete(self, key: bytes) -> bool:
-    success = self._tree.delete(key)
+  def delete(self, req: DeleteReq) -> bool:
+    success = self._tree.delete(req)
     if success:
       self._flush()
     return success

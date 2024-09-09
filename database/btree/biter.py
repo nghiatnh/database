@@ -1,22 +1,10 @@
-from typing import List
+from typing import List, Tuple
 
 from database.btree.node import BNode
 from database.btree.btree import BTree
 from database.constants import NodeType
 from database.constants import CompareOP
-
-
-def _cmp_ok(key1: bytes, op: CompareOP, key2: bytes) -> bool:
-  match op:
-    case CompareOP.LE:
-      return key1 <= key2
-    case CompareOP.LT:
-      return key1 < key2
-    case CompareOP.GE:
-      return key1 >= key2
-    case CompareOP.GT:
-      return key1 > key2
-  return False
+from database.constants import COMPARE_FUNC
 
 
 class BIter:
@@ -54,8 +42,25 @@ class BIter:
       self.path[level + 1] = child
       self.pos[level + 1] = 0
 
-  def deref(self):
-    return self.path[-1].get(self.pos[-1]).key, self.path[-1].get(self.pos[-1]).value
+  @staticmethod
+  def _seek_le(tree: BTree, key: bytes) -> "BIter":
+    it = BIter(tree)
+    child = tree.root
+    while child != 0:
+      node = tree._get(child)
+      idx = node.lookup_le(key)
+      it.path.append(node)
+      it.pos.append(idx)
+      child = node.get_child(idx) if node.type == NodeType.INTERNAL else 0
+    return it
+
+  # ========================================================================= #
+  # Public API                                                                #
+  # ========================================================================= #
+
+  def deref(self) -> Tuple[bytes, bytes]:
+    data = self.path[-1].get(self.pos[-1])
+    return data.key, data.value
 
   def valid(self) -> bool:
     return len(self.pos) > 0 and self._valid
@@ -67,24 +72,12 @@ class BIter:
     self._iter_next(len(self.path) - 1)
 
   @staticmethod
-  def seek_le(tree: BTree, key: bytes) -> "BIter":
-    it = BIter(tree)
-    child = tree.root
-    while child != 0:
-      node = tree._get(child)
-      idx = node.lookup_le(key)
-      it.path.append(node)
-      it.pos.append(idx)
-      child = node.get_child(idx) if node.type == NodeType.INTERNAL else 0
-    return it
-
-  @staticmethod
-  def seek(tree: BTree, key: bytes, cmp: CompareOP) -> "BIter":
-    it = BIter.seek_le(tree, key)
-    if cmp != CompareOP.LE and it.valid():
+  def seek(tree: BTree, key: bytes, op: CompareOP) -> "BIter":
+    it = BIter._seek_le(tree, key)
+    if op != CompareOP.LE and it.valid():
       cur, _ = it.deref()
-      if not _cmp_ok(cur, cmp, key):
-        if cmp in [CompareOP.GE, CompareOP.GT]:
+      if not COMPARE_FUNC[op](cur, key):
+        if op in [CompareOP.GE, CompareOP.GT]:
           it.next()
         else:
           it.prev()

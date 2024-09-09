@@ -12,12 +12,28 @@ class NodeType(Enum):
   FREE = 3
 
 
+class UpdateMode(Enum):
+  INSERT_ONLY = 1
+  UPDATE_ONLY = 2
+  UPSERT = 3
+
+
 class CompareOP(Enum):
   GE = 3
   GT = 2
   LT = -2
   LE = -3
 
+
+class IndexOP(Enum):
+  ADD = 1
+  DELETE = 2
+
+
+class ColumnType(Enum):
+  ERROR = 0
+  BYTES = 1
+  INT = 2
 
 # =========================================================================== #
 # Constants                                                                   #
@@ -34,4 +50,12 @@ FREE_LIST_HEADER = 4 + 8 + 8  # type + length + next + total_length
 FREE_LIST_CAP = (PAGE_SIZE - FREE_LIST_HEADER) // 8
 
 # Master Page
-MASTER_SIG = b'MyOwnDatabase012'
+MASTER_SIG = b"MyOwnDatabase012"
+
+# Compare function
+COMPARE_FUNC = {
+    CompareOP.GE: lambda a, b: a >= b,
+    CompareOP.GT: lambda a, b: a > b,
+    CompareOP.LT: lambda a, b: a < b,
+    CompareOP.LE: lambda a, b: a <= b,
+}
