@@ -3,12 +3,11 @@ from typing import Dict, Optional, Union
 
 from database.btree import BNode
 from database.btree import BTree
-from database.btree.btree import InsertReq
-from database.btree.btree import DeleteReq
 from database.free_list.node import FreeNode
 from database.free_list import FreeList
 from database.kvstore.io import FileHandler
 from database.kvstore.master_page import MasterPage
+from database.protocol import KVTX
 from database.constants import PAGE_SIZE
 from database.constants import MASTER_SIG
 
@@ -84,7 +83,7 @@ class KVStore:
   def _extend_file(self, n_pages: int):
     self._file.extend(n_pages * PAGE_SIZE)
 
-  def _flush(self):
+  def _write_pages(self):
     freed = []
     for i, page in self._updates.items():
       if page is None:
@@ -95,12 +94,6 @@ class KVStore:
     for i, page in self._updates.items():
       if page is not None:
         self._file.write(i * PAGE_SIZE, page.serialize())
-    self._flushed = n_pages
-    self._nappend = 0
-    self._n_free = 0
-    self._updates.clear()
-    self._master_store()
-    self._file.flush()
 
   # ========================================================================= #
   # Public API                                                                #
@@ -109,6 +102,10 @@ class KVStore:
   @property
   def tree(self) -> BTree:
     return self._tree
+
+  @property
+  def free_list(self) -> FreeList:
+    return self._free_list
 
   def open(self):
     try:
@@ -126,19 +123,36 @@ class KVStore:
       self.close()
       raise e
 
+  def _rollback(self, root: int, head: int):
+    self._tree.root = root
+    self._free_list.head = head
+    self._n_free = 0
+    self._nappend = 0
+    self._updates.clear()
+
   def close(self):
     self._file.close()
 
-  def get(self, key: bytes) -> bytes:
-    return self._tree.get(key)
+  def begin(self, tx: KVTX) -> KVTX:
+    tx.db = self
+    tx.root = self._tree.root
+    tx.head = self._free_list.head
+    return tx
 
-  def set(self, req: InsertReq):
-    self._tree.insert(req)
-    if req.updated:
-      self._flush()
+  def commit(self, tx: KVTX):
+    if tx.root == self.tree.root and tx.head == self.free_list.head:
+      return
+    try:
+      self._write_pages()
+    except Exception as e:
+      self._rollback(tx.root, tx.head)
+      raise e
+    self._flushed = self._flushed + self._nappend
+    self._nappend = 0
+    self._n_free = 0
+    self._updates.clear()
+    self._master_store()
+    self._file.flush()
 
-  def delete(self, req: DeleteReq) -> bool:
-    success = self._tree.delete(req)
-    if success:
-      self._flush()
-    return success
+  def abort(self, tx: KVTX):
+    self._rollback(tx.root, tx.head)
