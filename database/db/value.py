@@ -16,6 +16,12 @@ class Value:
     return self.__repr__()
 
   @property
+  def value(self) -> int:
+    if self.type == ColumnType.INT:
+      return self.integer
+    return self.string
+
+  @property
   def integer(self) -> int:
     if self.type != ColumnType.INT:
       raise ValueError("Not an integer")

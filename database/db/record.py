@@ -10,6 +10,9 @@ class Column:
   name: str
   type: ColumnType
 
+  def __repr__(self) -> str:
+    return f"Column({self.name}: {self.type.name})"
+
 
 class Record:
   def __init__(
