@@ -35,11 +35,11 @@ print(Record.format_records(recs))
 
 ## Limitations and Areas for Improvement
 
-- The source book using Go Lang to code this project, so he implemented the concurencing. I also need to do that. I found that Python is hard and bad for parallel, so I will back in the future with the Go Lang and the concurent read-write.
+- The source bookuses Go Lang to code this project, so it implements concurrency. I also need to do that. I found that Python is challenging for parallel processing, so I will revisit this in the future with Go Lang and concurrent read-write capabilities.
 
-- May I missing some checking in my project. I need to add them.
+- There may be some missing checks in my project.
 
-- The query language is so simple. It does not have some important things like check if the table exist, drop tables,... . I need to improve it.
+- The query language is very simple. t lacks important features like checking if a table exists, dropping tables, etc. I need to improve it.
 
 ## Contributing
 
