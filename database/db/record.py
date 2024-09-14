@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict
 from dataclasses import dataclass
 
 from database.db.value import Value
@@ -69,6 +69,13 @@ class Record:
     if column in self.column_names:
       raise KeyError("Column existed")
 
+  @staticmethod
+  def _format_string(string: str) -> str:
+    max_len = 10
+    if len(string) < max_len:
+      return string + " " * (max_len - len(string))
+    return string[:max_len - 3] + "..."
+
   # ========================================================================= #
   # Public API                                                                #
   # ========================================================================= #
@@ -110,3 +117,32 @@ class Record:
     self.columns.append(Column(column, ColumnType.INT))
     self.values.append(Value(ColumnType.INT, b"", value))
     return self
+
+  def rename(self, aliases: Dict[str, str]) -> "Record":
+    """
+    Renames the columns in the record.
+    """
+    for i, col in enumerate(self.columns):
+      if col.name in aliases:
+        self.columns[i] = Column(aliases[col.name], col.type)
+    return self
+
+  @staticmethod
+  def format_records(recs: List["Record"]) -> str:
+    """
+    Formats the records in a table format.
+    """
+    if not recs:
+      return "# No records found"
+    res = "‖ " + " ‖ ".join(
+        [Record._format_string(x) for x in recs[0].column_names]
+    ) + "‖"
+    line1 = "\n" + "-" * len(res) + "\n"
+    line2 = "\n" + "=" * len(res) + "\n"
+    res = f"# {len(recs)} records found" + line2 + res + line2
+    for rec in recs:
+      res += "| " + " | ".join(
+          [Record._format_string(str(rec[x].value)) for x in rec.column_names]
+      ) + "|"
+      res += line1
+    return res
