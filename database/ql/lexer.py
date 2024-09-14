@@ -1,6 +1,6 @@
 from typing import Optional
 
-from database.ql.common import QLError
+from database.ql.exceptions import QLError
 from database.ql.token import Token
 from database.ql.constants import TokenType
 from database.ql.constants import PUNCTUATIONS
@@ -10,6 +10,13 @@ from database.ql.constants import KEYWORDS
 
 
 class Lexer:
+  """
+  Lexer
+  =====
+  Lexer class represents a lexer that tokenizes the source code. It contains the
+  source code and the current position in the source code.
+  """
+
   def __init__(
       self,
       text: str,
@@ -18,6 +25,10 @@ class Lexer:
     self._pos = 0
     self._line = 1
     self._column = 1
+
+  # ========================================================================= #
+  # Internal API                                                              #
+  # ========================================================================= #
 
   @property
   def _is_eof(self) -> bool:
@@ -34,7 +45,7 @@ class Lexer:
       column: int,
       message: str = "",
   ) -> QLError:
-    return QLError(line, column, message)
+    return QLError(self._text, line, column, message)
 
   def _move_next(self):
     if not self._is_eof:
@@ -77,7 +88,10 @@ class Lexer:
 
   def _identifier(self) -> str:
     cur = ""
-    while self.cur_char is not None and self.cur_char.isalnum():
+    while (
+        self.cur_char is not None and
+        (self.cur_char.isalnum() or self.cur_char == "_")
+    ):
       cur += self.cur_char
       self._move_next()
     return cur
@@ -91,7 +105,7 @@ class Lexer:
     return Token(line, column, TokenType.ID, _id)
 
   # ========================================================================= #
-  # Public methods                                                            #
+  # Public API                                                                #
   # ========================================================================= #
 
   @property
@@ -103,6 +117,13 @@ class Lexer:
       return None
     cur_char = self._text[self._pos]
     return cur_char
+
+  @property
+  def text(self) -> str:
+    """
+    Get the source code.
+    """
+    return self._text
 
   def next_token(self) -> Token:
     """

@@ -9,7 +9,7 @@ class ASTNode:
   """
   ASTNode
   =======
-  The ASTNode class represents a node in the abstract syntax tree. It contains
+  ASTNode class represents a node in the abstract syntax tree. It contains
   a token and a list of children nodes. The token represents the node's value
   and the children represent the node's children.
   """
@@ -25,7 +25,7 @@ class ASTNode:
     self._children = children or []
 
   def __str__(self) -> str:
-    return f"<ASTNode {self.type.name}: {self.token.value}>"
+    return f"ASTNode({self.type.name}: {self.token.value})"
 
   def __repr__(self) -> str:
     return self.__str__()
@@ -41,7 +41,7 @@ class ASTNode:
       dot.edge(str(id(node)), str(id(child)))
 
   # ========================================================================= #
-  # Public methods                                                            #
+  # Public API                                                                #
   # ========================================================================= #
 
   @property
@@ -59,11 +59,7 @@ class ASTNode:
     """The type of the node."""
     return self._type
 
-  def update_type(self, value: ASTNodeType):
-    """Update the type of the node."""
-    self._type = value
-
-  def render_tree(self, filename: str):
+  def render(self, filename: str):
     """
     Render the abstract syntax tree to a file using graphviz.
     """

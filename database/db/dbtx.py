@@ -19,19 +19,21 @@ from database.db.db import Database
 
 
 class DatabaseTX:
-  def __init__(self, path: str) -> None:
+  """
+  DatabaseTX
+  ==========
+  DatabaseTX class represents a database transaction. It provides methods to
+  get, insert, update, delete and scan records in the database.
+  """
+
+  def __init__(self, path: str):
     self.kv: KVTX = KVTX()
     self.db = Database(path)
     self.tables: Dict[str, TableDef] = {}
 
-  def _get_table_def(self, name: str) -> Optional[TableDef]:
-    if name in self.tables:
-      return self.tables[name]
-    rec = Record().add_string("name", name)
-    found = self._get(TDEF_TABLE, rec)
-    if not found:
-      return None
-    return TableDef.from_dict(json.loads(rec["def"].string))
+  # ========================================================================= #
+  # Internal API                                                              #
+  # ========================================================================= #
 
   # reorder a record and check for missing columns.
   # n == tdef.PKeys: record is exactly a primary key
@@ -99,13 +101,18 @@ class DatabaseTX:
     return success
 
   def _set(self, table: str, rec: Record, mode: UpdateMode) -> bool:
-    tdef = self._get_table_def(table)
+    tdef = self.get_table_def(table)
     if tdef is None:
       raise KeyError("Table not found")
     return self._update(tdef, rec, mode)
 
   def _scan(self, tdef: TableDef, sc: "Scanner"):
-    assert sc.cmp1.value * sc.cmp2.value < 0
+    assert (
+        (sc.cmp1 in [CompareOP.GE, CompareOP.GT] and
+         sc.cmp2 in [CompareOP.LE, CompareOP.LT]) or
+        (sc.cmp1 in [CompareOP.LE, CompareOP.LT] and
+         sc.cmp2 in [CompareOP.GE, CompareOP.GT])
+    )
     # values1 = self._check_record(tdef, sc.key1, tdef.pkeys)
     # values2 = self._check_record(tdef, sc.key2, tdef.pkeys)
     index_no = tdef.find_index([x.name for x in sc.key1.columns])
@@ -130,28 +137,79 @@ class DatabaseTX:
         case IndexOP.DELETE:
           self.kv.delete(DeleteReq(key))
 
+  # ========================================================================= #
+  # Public API                                                                #
+  # ========================================================================= #
+
+  def get_table_def(self, name: str) -> Optional[TableDef]:
+    """
+    Returns the table definition for the given table name. If the table is not
+    found, it returns None.
+    """
+    if name in self.tables:
+      return self.tables[name]
+    rec = Record().add_string("name", name)
+    found = self._get(TDEF_TABLE, rec)
+    if not found:
+      return None
+    return TableDef.from_dict(json.loads(rec["def"].string))
+
   def get(self, table: str, rec: Record):
-    tdef = self._get_table_def(table)
+    """
+    Returns the record for the given table and record.
+    """
+    tdef = self.get_table_def(table)
     if tdef is None:
       raise KeyError("Table not found")
     self._get(tdef, rec)
 
   def insert(self, table: str, rec: Record) -> bool:
+    """
+    Inserts a record into the given table.
+    """
     return self._set(table, rec, UpdateMode.INSERT_ONLY)
 
   def update(self, table: str, rec: Record) -> bool:
+    """
+    Updates a record in the given table.
+    """
     return self._set(table, rec, UpdateMode.UPDATE_ONLY)
 
   def upsert(self, table: str, rec: Record) -> bool:
+    """
+    Updates or inserts a record in the given table.
+    """
     return self._set(table, rec, UpdateMode.UPSERT)
 
   def delete(self, table: str, rec: Record) -> bool:
-    tdef = self._get_table_def(table)
+    """
+    Deletes a record from the given table.
+    """
+    tdef = self.get_table_def(table)
     if tdef is None:
       raise KeyError("Table not found")
     return self._delete(tdef, rec)
 
+  def scan(self, table: str, sc: "Scanner") -> Generator[Record, None, None]:
+    """
+    Scans the records in the given table using the scanner. It returns a
+    generator of records.
+    """
+    tdef = self.get_table_def(table)
+    if tdef is None:
+      raise KeyError("Table not found")
+    self._scan(tdef, sc)
+    while sc.valid():
+      rec = Record()
+      if sc.deref(rec):
+        self._get(tdef, rec)
+        yield rec
+      sc.next()
+
   def table_new(self, tdef: TableDef):
+    """
+    Creates a new table in the database.
+    """
     tdef.check()
     table = Record().add_string("name", tdef.name)
     found = self._get(TDEF_TABLE, table)
@@ -175,30 +233,34 @@ class DatabaseTX:
     table.add_string("def", json.dumps(tdef.to_dict()))
     self._update(TDEF_TABLE, table, UpdateMode.UPSERT)
 
-  def scan(self, table: str, sc: "Scanner") -> Generator[Record, None, None]:
-    tdef = self._get_table_def(table)
-    if tdef is None:
-      raise KeyError("Table not found")
-    self._scan(tdef, sc)
-    while sc.valid():
-      rec = Record()
-      if sc.deref(rec):
-        self._get(tdef, rec)
-        yield rec
-      sc.next()
-
   def open(self):
+    """
+    Opens the database transaction.
+    """
     self.db.open()
 
   def close(self):
+    """
+    Closes the database transaction
+    """
     self.db.close()
 
   def begin(self) -> "DatabaseTX":
+    """
+    Begins a transaction.
+    """
     self.db.begin(self)
     return self
 
   def commit(self):
+    """
+    Commits the transaction. It writes the changes made during the transaction
+    to the file.
+    """
     self.db.commit(self)
 
   def abort(self):
+    """
+    Aborts the transaction. It discards the changes made during the transaction.
+    """
     self.db.abort(self)

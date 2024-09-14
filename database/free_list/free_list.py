@@ -6,18 +6,23 @@ from database.constants import FREE_LIST_CAP
 
 
 class FreeList:
-  def __init__(self, head: int = 0) -> None:
+  """
+  FreeList
+  ========
+  FreeList class represents the free list in the database. It provides methods
+  to update the free list, get a free node, and render the free list as a graph.
+  """
+
+  def __init__(self, head: int = 0):
     self.head: int = head
     # Callbacks
     self._new: Callable[[FreeNode], int]
     self._get: Callable[[int,], FreeNode]
     self._use: Callable[[int, FreeNode], None]
 
-  @property
-  def total_length(self) -> int:
-    if self.head == 0:
-      return 0
-    return self._get(self.head).total_length
+  # ========================================================================= #
+  # Internal API                                                              #
+  # ========================================================================= #
 
   def _push(self, freed: List[int], reuse: List[int]):
     while len(freed) > 0:
@@ -50,7 +55,24 @@ class FreeList:
       self._add_node(next_node, node.next, dot)
       dot.edge(str(last), str(node.next))
 
+  # ========================================================================= #
+  # Public API                                                                #
+  # ========================================================================= #
+
+  @property
+  def total_length(self) -> int:
+    """
+    Returns the total length of the free list. It is the sum of the lengths of
+    all the free nodes.
+    """
+    if self.head == 0:
+      return 0
+    return self._get(self.head).total_length
+
   def render(self, filename: str):
+    """
+    Renders the free list as a graph and saves it to the given filename.
+    """
     dot = graphviz.Digraph()
     self._add_node(self._get(self.head), self.head, dot)
     dot.render(filename, format="png", view=True)
@@ -61,11 +83,18 @@ class FreeList:
       get: Callable[[int,], FreeNode],
       use: Callable[[int, FreeNode], None],
   ):
+    """
+    Set the callbacks for the FreeList. The callbacks are used to create a new
+    free node, get a free node by its ID, and reuse a free node by its ID.
+    """
     self._new = new
     self._get = get
     self._use = use
 
   def get(self, n: int) -> int:
+    """
+    Returns the child node at the given index in the free list.
+    """
     assert 0 <= n < self.total_length
     node = self._get(self.head)
     while node.length <= n:
@@ -74,6 +103,9 @@ class FreeList:
     return node.get_child(node.length - n - 1)
 
   def update(self, n: int, freed: List[int]):
+    """
+    Updates the free list with the given number of children freed.
+    """
     assert 0 <= n <= self.total_length
     if n == 0 and len(freed) == 0:
       return

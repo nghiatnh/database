@@ -15,6 +15,10 @@ def _escape_string(s: bytes) -> bytes:
 
 
 def encode_values(values: List[Value]) -> bytes:
+  """
+  Encode values into a byte string. The bytes are escaped to handle null
+  characters and special characters.
+  """
   result = b""
   for val in values:
     match val.type:
@@ -28,6 +32,10 @@ def encode_values(values: List[Value]) -> bytes:
 
 
 def decode_values(data: bytes, types: List[ColumnType]) -> List[Value]:
+  """
+  Decode values from a byte string. The bytes are unescaped to handle null
+  characters and special characters.
+  """
   values: List[Value] = []
   for t in types:
     match t:
@@ -46,6 +54,10 @@ def decode_values(data: bytes, types: List[ColumnType]) -> List[Value]:
 
 
 def encode_key(prefix: int, values: List[Value]) -> bytes:
+  """
+  Encode a key into a byte string. The byte string is prefixed with a 4-byte
+  integer.
+  """
   return binary.bytes4(prefix) + encode_values(values)
 
 
@@ -56,6 +68,11 @@ def encode_key_partial(
     keys: List[str],
     cmp: CompareOP,
 ):
+  """
+  Encode a partial key into a byte string. The byte string is prefixed with a
+  4-byte integer. The key is padded with 0xff bytes if the comparison operator
+  is GT or LE.
+  """
   out = encode_key(prefix, values)
   if cmp in [CompareOP.GT, CompareOP.LE]:
     for i in range(len(values), len(keys)):

@@ -7,12 +7,24 @@ from database.constants import ColumnType
 
 @dataclass
 class TableDef:
+  """
+  TableDef
+  ========
+  TableDef class represents a table definition in the database. It contains the
+  name of the table, the columns, the primary key columns, the prefix, the
+  indexes, and the index prefixes.
+  """
+
   name: str
   columns: List[Column]
   pkeys: int
   prefix: int
   indexes: List[List[str]]
   index_prefixes: List[int]
+
+  # ========================================================================= #
+  # Internal API                                                              #
+  # ========================================================================= #
 
   def _check_index_keys(self, index: List[str]) -> List[str]:
     icols: Dict[str, bool] = {}
@@ -34,20 +46,36 @@ class TableDef:
         return False
     return True
 
+  # ========================================================================= #
+  # Public API                                                                #
+  # ========================================================================= #
+
   @property
   def n_cols(self) -> int:
+    """
+    Returns the number of columns in the table.
+    """
     return len(self.columns)
 
   @property
   def column_names(self) -> List[str]:
+    """
+    Returns the names of the columns in the table.
+    """
     return [x.name for x in self.columns]
 
   @property
   def column_types(self) -> List[ColumnType]:
+    """
+    Returns the types of the columns in the table.
+    """
     return [x.type for x in self.columns]
 
   @staticmethod
   def from_dict(data: dict) -> "TableDef":
+    """
+    Creates a TableDef object from a dictionary.
+    """
     return TableDef(
         data["name"],
         [Column(x["name"], ColumnType(x["type"])) for x in data["columns"]],
@@ -58,6 +86,9 @@ class TableDef:
     )
 
   def to_dict(self) -> dict:
+    """
+    Converts the TableDef object into a dictionary.
+    """
     return {
         "name": self.name,
         "columns": [
@@ -70,10 +101,16 @@ class TableDef:
     }
 
   def check(self):
+    """
+    Checks the table definition for consistency.
+    """
     for i, index in enumerate(self.indexes):
       self.indexes[i] = self._check_index_keys(index)
 
   def find_index(self, keys: List[str]) -> int:
+    """
+    Finds the index that matches the given keys.
+    """
     if self._is_prefix(self.column_names[:self.pkeys], keys):
       return -1
     winner = -2
@@ -87,6 +124,9 @@ class TableDef:
     return winner
 
   def col_index(self, col: str) -> int:
+    """
+    Returns the index of the column in the table.
+    """
     if col in self.column_names:
       return self.column_names.index(col)
     return -1
@@ -106,6 +146,9 @@ TDEF_META = TableDef(
     indexes=[],
     index_prefixes=[],
 )
+"""
+This table stores the metadata. It has two columns: key and value.
+"""
 
 TDEF_TABLE = TableDef(
     name="@table",
@@ -115,3 +158,6 @@ TDEF_TABLE = TableDef(
     indexes=[],
     index_prefixes=[],
 )
+"""
+This table stores the table definitions. It has two columns: name and def.
+"""

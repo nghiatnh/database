@@ -3,6 +3,13 @@ from database.constants import MASTER_SIG
 
 
 class MasterPage:
+  """
+  MasterPage
+  ==========
+  MasterPage class represents the master page of the database. It contains the
+  root of the B+Tree, the number of pages used, and the head of the free list.
+  """
+
   # Master page structure:
   # |--------------------------------|
   # | signature | root | used | head |
@@ -15,13 +22,20 @@ class MasterPage:
       root: int,
       used: int,
       head: int,
-  ) -> None:
+  ):
     self.sig = sig
     self.root = root
     self.used = used
     self.head = head
 
+  # ========================================================================= #
+  # Public API                                                                #
+  # ========================================================================= #
+
   def serialize(self) -> bytes:
+    """
+    Serialize the master page into a byte string.
+    """
     return (
         self.sig +
         binary.bytes8(self.root) +
@@ -31,6 +45,9 @@ class MasterPage:
 
   @staticmethod
   def deserialize(data: bytes) -> "MasterPage":
+    """
+    Deserialize the byte string into a MasterPage object.
+    """
     master_page = MasterPage(
         data[:16],
         binary.uint64(data[16:24]),

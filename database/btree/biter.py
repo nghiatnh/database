@@ -8,7 +8,15 @@ from database.constants import COMPARE_FUNC
 
 
 class BIter:
-  def __init__(self, tree: BTree) -> None:
+  """
+  BIter
+  =====
+  BIter class represents an iterator for the B+Tree. It provides methods to
+  iterate over the key-value pairs in the B+Tree. The iterator can seek to a
+  specific key, and iterate in ascending or descending order.
+  """
+
+  def __init__(self, tree: BTree):
     self._tree: BTree = tree
     self.path: List[BNode] = []
     self.pos: List[int] = []
@@ -24,7 +32,7 @@ class BIter:
       return
     if level + 1 < len(self.pos):
       node = self.path[level]
-      child = self._tree._get(node.get_child(self.pos[level]))
+      child = self._tree.get_by_id(node.get_child(self.pos[level]))
       self.path[level + 1] = child
       self.pos[level + 1] = child.nkeys - 1
 
@@ -38,7 +46,7 @@ class BIter:
       return
     if level + 1 < len(self.pos):
       node = self.path[level]
-      child = self._tree._get(node.get_child(self.pos[level]))
+      child = self._tree.get_by_id(node.get_child(self.pos[level]))
       self.path[level + 1] = child
       self.pos[level + 1] = 0
 
@@ -47,7 +55,7 @@ class BIter:
     it = BIter(tree)
     child = tree.root
     while child != 0:
-      node = tree._get(child)
+      node = tree.get_by_id(child)
       idx = node.lookup_le(key)
       it.path.append(node)
       it.pos.append(idx)
@@ -59,20 +67,36 @@ class BIter:
   # ========================================================================= #
 
   def deref(self) -> Tuple[bytes, bytes]:
+    """
+    Returns the key and value at the current iterator position.
+    """
     data = self.path[-1].get(self.pos[-1])
     return data.key, data.value
 
   def valid(self) -> bool:
+    """
+    Returns True if the iterator is valid, False otherwise.
+    """
     return len(self.pos) > 0 and self._valid
 
   def prev(self):
+    """
+    Moves the iterator to the previous key-value pair.
+    """
     self._iter_prev(len(self.path) - 1)
 
   def next(self):
+    """
+    Moves the iterator to the next key-value pair.
+    """
     self._iter_next(len(self.path) - 1)
 
   @staticmethod
   def seek(tree: BTree, key: bytes, op: CompareOP) -> "BIter":
+    """
+    Seeks the iterator to the specified key based on the comparison operator.
+    Returns the iterator.
+    """
     it = BIter._seek_le(tree, key)
     if op != CompareOP.LE and it.valid():
       cur, _ = it.deref()

@@ -19,10 +19,10 @@ class UpdateMode(Enum):
 
 
 class CompareOP(Enum):
-  GE = 3
-  GT = 2
-  LT = -2
-  LE = -3
+  GE = ">="
+  GT = ">"
+  LT = "<"
+  LE = "<="
 
 
 class IndexOP(Enum):

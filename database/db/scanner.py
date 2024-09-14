@@ -11,13 +11,21 @@ from database.constants import COMPARE_FUNC
 
 @dataclass
 class Scanner:
+  """
+  Scanner
+  =======
+  Scanner class represents a scanner in the database. It contains the comparison
+  operators, the keys, the index number, the end key, the table definition, and
+  the iterator.
+  """
+
   def __init__(
       self,
       cmp1: CompareOP,
       cmp2: CompareOP,
       key1: Record,
       key2: Record,
-  ) -> None:
+  ):
     self.cmp1 = cmp1
     self.cmp2 = cmp2
     self.key1 = key1
@@ -27,7 +35,14 @@ class Scanner:
     self.tdef: Optional[TableDef] = None
     self.it: Optional[BIter] = None
 
+  # ========================================================================= #
+  # Public API                                                                #
+  # ========================================================================= #
+
   def valid(self) -> bool:
+    """
+    Returns True if the scanner is valid, False otherwise.
+    """
     assert self.it is not None
     if not self.it.valid():
       return False
@@ -35,6 +50,9 @@ class Scanner:
     return COMPARE_FUNC[self.cmp2](key, self.key_end)
 
   def next(self):
+    """
+    Moves the scanner to the next key.
+    """
     assert self.it is not None
     assert self.valid()
     if self.cmp1 in [CompareOP.GE, CompareOP.GT]:
@@ -43,6 +61,9 @@ class Scanner:
       self.it.prev()
 
   def deref(self, rec: Record) -> bool:
+    """
+    Returns the record at the current scanner position.
+    """
     assert self.it is not None
     assert self.tdef is not None
     key, value = self.it.deref()

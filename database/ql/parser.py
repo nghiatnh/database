@@ -4,9 +4,7 @@ from database.ql.lexer import Lexer
 from database.ql.ast_node import ASTNode
 from database.ql.constants import TokenType
 from database.ql.constants import ASTNodeType
-from database.ql.error_reporter import ErrorType
-from database.ql.error_reporter import CompileError
-from database.ql.error_reporter import ErrorReporter
+from database.ql.exceptions import QLError
 
 
 class Parser:
@@ -17,36 +15,37 @@ class Parser:
   and constructing an abstract syntax tree (AST) for the input program.
   """
 
-  def __init__(self, lexer: Lexer, error_reporter: ErrorReporter):
+  def __init__(self, lexer: Lexer):
     self._lexer = lexer
     self._cur_token: Token = Token(0, 0, TokenType.EOF, TokenType.EOF.value)
-    self._error_reporter = error_reporter
+
+  # ========================================================================= #
+  # Internal API                                                              #
+  # ========================================================================= #
 
   def _error(
-      self, error_type: ErrorType, token: Token, message: str = ""
-  ) -> CompileError:
-    return self._error_reporter.error_token(error_type, token, message)
+      self, token: Token, message: str = ""
+  ) -> QLError:
+    return QLError(self._lexer.text, token.line, token.column, message)
 
   def _eat(self, token_type: TokenType):
     if self._cur_token.type == token_type:
       self._cur_token = self._lexer.next_token()
     else:
-      raise self._error(
-          ErrorType.EXPECT_TOKEN, self._cur_token, f"Expect {token_type.value}"
-      )
+      raise self._error(self._cur_token, f"Expect {token_type.value}")
 
   def _id_token(self) -> Token:
     id_ = self.cur_token
     self._eat(TokenType.ID)
     return id_
 
-  @property
-  def cur_token(self) -> Token:
-    return self._cur_token
-
   # ========================================================================= #
   # Parser methods                                                            #
   # ========================================================================= #
+
+  # ------------------------------------------------------------------------- #
+  # Statements                                                                #
+  # ------------------------------------------------------------------------- #
 
   def _table_name(self) -> ASTNode:
     table_name = self._id_token()
@@ -76,10 +75,11 @@ class Parser:
       return self._update()
     if token.type == TokenType.DELETE:
       return self._delete()
-    raise self._error(
-        ErrorType.UNEXPECTED_TOKEN, token,
-        f"Unexpected token: {token.type.value}"
-    )
+    raise self._error(token, f"Unexpected token: {token.type.value}")
+
+  # ------------------------------------------------------------------------- #
+  # Create Table                                                              #
+  # ------------------------------------------------------------------------- #
 
   def _create_table(self) -> ASTNode:
     token = self.cur_token
@@ -93,33 +93,23 @@ class Parser:
     return res
 
   def _declarations(self) -> ASTNode:
-    fields = []
-    indexs = []
-    primary_keys = None
-    fields.append(self._field_decl())
-    stage = 0
+    fields, indexes = [self._field_decl()], []
+    is_index = False
     while self.cur_token.type == TokenType.COMMA:
       self._eat(TokenType.COMMA)
-      if self.cur_token.type == TokenType.INDEX and stage <= 1:
-        indexs.append(self._index_decl())
-        stage = 1
-      elif self.cur_token.type == TokenType.PRIMARY and stage < 2:
-        primary_keys = self._primary_key_decl()
-        stage = 2
-      elif stage == 0:
+      if self.cur_token.type == TokenType.PRIMARY:
+        break
+      if not is_index and self.cur_token.type == TokenType.ID:
         fields.append(self._field_decl())
-      else:
-        raise self._error(
-            ErrorType.UNEXPECTED_TOKEN, self.cur_token,
-            f"Unexpected token: {self.cur_token.value}"
-        )
-    if primary_keys is None:
-      raise ValueError("Expect primary key")
+        continue
+      is_index = True
+      indexes.append(self._index_decl())
+    primary_keys = self._primary_key_decl()
     return ASTNode(
         ASTNodeType.DECLARATIONS, self.cur_token,
         [
             ASTNode(ASTNodeType.FIELD_DECLS, self.cur_token, fields),
-            ASTNode(ASTNodeType.INDEX_DECLS, self.cur_token, indexs),
+            ASTNode(ASTNodeType.INDEX_DECLS, self.cur_token, indexes),
             primary_keys
         ]
     )
@@ -135,8 +125,7 @@ class Parser:
     if token.type in [TokenType.INTEGER, TokenType.STRING]:
       self._eat(token.type)
       return ASTNode(ASTNodeType.TYPE, token)
-    raise self._error(ErrorType.INVALID_TYPE, token,
-                      f"Invalid type: {token.type.name}")
+    raise self._error(token, f"Invalid type: {token.type.name}")
 
   def _index_decl(self) -> ASTNode:
     token = self.cur_token
@@ -151,13 +140,16 @@ class Parser:
 
   def _tuple_decl(self) -> List[ASTNode]:
     self._eat(TokenType.LEFT_PAREN)
-    decls = []
-    while self.cur_token.type == TokenType.ID:
+    decls = [self._field_name()]
+    while self.cur_token.type == TokenType.COMMA:
+      self._eat(TokenType.COMMA)
       decls.append(self._field_name())
-      if self.cur_token.type == TokenType.COMMA:
-        self._eat(TokenType.COMMA)
     self._eat(TokenType.RIGHT_PAREN)
     return decls
+
+  # ------------------------------------------------------------------------- #
+  # Select                                                                    #
+  # ------------------------------------------------------------------------- #
 
   def _select(self) -> ASTNode:
     token = self.cur_token
@@ -167,8 +159,9 @@ class Parser:
     table = self._table_name()
     conditions = self._conditions()
     limit = self._limit()
-    return ASTNode(ASTNodeType.SELECT, token,
-                   [fields, table, conditions, limit])
+    return ASTNode(
+        ASTNodeType.SELECT, token, [fields, table, conditions, limit]
+    )
 
   def _select_expr(self) -> ASTNode:
     if self.cur_token.type == TokenType.LEFT_PAREN:
@@ -235,52 +228,31 @@ class Parser:
     left = self._field_name()
     op = self.cur_token
     if op.type in [
-        TokenType.EQ, TokenType.NEQ, TokenType.LT, TokenType.LE, TokenType.GT,
-        TokenType.GE
+        TokenType.EQ, TokenType.NEQ, TokenType.LT,
+        TokenType.LE, TokenType.GT, TokenType.GE,
     ]:
       self._eat(op.type)
     else:
-      raise self._error(
-          ErrorType.UNEXPECTED_TOKEN, op,
-          f"Invalid operator: {op.value}"
-      )
+      raise self._error(op, f"Invalid operator: {op.value}")
     right = self._logic()
     return ASTNode(ASTNodeType.CONDITION, op, [left, right])
+
+  # ------------------------------------------------------------------------- #
+  # Insert                                                                    #
+  # ------------------------------------------------------------------------- #
 
   def _insert(self):
     self._eat(TokenType.INSERT)
     self._eat(TokenType.INTO)
     table = self._table_name()
-    fields = ASTNode(ASTNodeType.TUPLE_DECLS,
-                     self.cur_token, self._tuple_decl())
+    fields = ASTNode(
+        ASTNodeType.TUPLE_DECLS, self.cur_token, self._tuple_decl()
+    )
     self._eat(TokenType.VALUES)
     values = self._tuple_values()
     return ASTNode(
         ASTNodeType.INSERT, self.cur_token, [table, fields, values]
     )
-
-  def _update(self) -> ASTNode:
-    self._eat(TokenType.UPDATE)
-    table = ASTNode(ASTNodeType.ID, self._id_token())
-    self._eat(TokenType.SET)
-    set_exprs = ASTNode(ASTNodeType.SET_EXPRS,
-                        self.cur_token, [self._set_expr()])
-    while self.cur_token.type == TokenType.COMMA:
-      self._eat(TokenType.COMMA)
-      set_exprs.children.append(self._set_expr())
-    conditions = self._conditions()
-    limit = self._limit()
-    return ASTNode(ASTNodeType.UPDATE, self.cur_token,
-                   [table, set_exprs, conditions, limit])
-
-  def _delete(self) -> ASTNode:
-    self._eat(TokenType.DELETE)
-    self._eat(TokenType.FROM)
-    table = self._table_name()
-    conditions = self._conditions()
-    limit = self._limit()
-    return ASTNode(ASTNodeType.DELETE, self.cur_token,
-                   [table, conditions, limit])
 
   def _tuple_values(self) -> ASTNode:
     self._eat(TokenType.LEFT_PAREN)
@@ -291,6 +263,27 @@ class Parser:
     self._eat(TokenType.RIGHT_PAREN)
     return ASTNode(ASTNodeType.TUPLE_VALUES, self.cur_token, values)
 
+  # ------------------------------------------------------------------------- #
+  # Update                                                                    #
+  # ------------------------------------------------------------------------- #
+
+  def _update(self) -> ASTNode:
+    token = self.cur_token
+    self._eat(TokenType.UPDATE)
+    table = self._table_name()
+    self._eat(TokenType.SET)
+    set_exprs = ASTNode(
+        ASTNodeType.SET_EXPRS, self.cur_token, [self._set_expr()]
+    )
+    while self.cur_token.type == TokenType.COMMA:
+      self._eat(TokenType.COMMA)
+      set_exprs.children.append(self._set_expr())
+    conditions = self._conditions()
+    limit = self._limit()
+    return ASTNode(
+        ASTNodeType.UPDATE, token, [table, set_exprs, conditions, limit]
+    )
+
   def _set_expr(self) -> ASTNode:
     token = self.cur_token
     field = self._field_name()
@@ -298,46 +291,56 @@ class Parser:
     value = self._comparison()
     return ASTNode(ASTNodeType.SET_EXPR, token, [field, value])
 
+  # ------------------------------------------------------------------------- #
+  # Delete                                                                    #
+  # ------------------------------------------------------------------------- #
+
+  def _delete(self) -> ASTNode:
+    self._eat(TokenType.DELETE)
+    self._eat(TokenType.FROM)
+    table = self._table_name()
+    conditions = self._conditions()
+    limit = self._limit()
+    return ASTNode(
+        ASTNodeType.DELETE, self.cur_token, [table, conditions, limit]
+    )
+
+  # ------------------------------------------------------------------------- #
+  # Expression                                                                #
+  # ------------------------------------------------------------------------- #
+
   def _value(self) -> ASTNode:
     if isinstance(self.cur_token.value, int):
       return self._number()
     if isinstance(self.cur_token.value, str):
       return self._string()
-    raise self._error(
-        ErrorType.UNEXPECTED_TOKEN, self.cur_token,
-        f"Invalid value: {self.cur_token.value}"
-    )
+    raise self._error(self.cur_token, f"Invalid value: {self.cur_token.value}")
 
   def _number(self) -> ASTNode:
     token = self.cur_token
     if not isinstance(token.value, int):
-      raise self._error(
-          ErrorType.UNEXPECTED_TOKEN, token,
-          f"Invalid number: {token.value}"
-      )
+      raise self._error(token, f"Invalid number: {token.value}")
     self._eat(TokenType.VALUE)
     return ASTNode(ASTNodeType.NUMBER, token)
 
   def _string(self) -> ASTNode:
     token = self.cur_token
     if not isinstance(token.value, str):
-      raise self._error(
-          ErrorType.UNEXPECTED_TOKEN, token,
-          f"Invalid string: {token.value}"
-      )
+      raise self._error(token, f"Invalid string: {token.value}")
     self._eat(TokenType.VALUE)
     return ASTNode(ASTNodeType.STRING, token)
 
   def _logic(self) -> ASTNode:
     comparison = self._comparison()
     while self.cur_token.type in [
-        TokenType.EQ, TokenType.NEQ, TokenType.LT, TokenType.LE, TokenType.GT,
-        TokenType.GE
+        TokenType.EQ, TokenType.NEQ, TokenType.LT,
+        TokenType.LE, TokenType.GT, TokenType.GE,
     ]:
       token = self.cur_token
       self._eat(token.type)
-      comparison = ASTNode(ASTNodeType.COMPARISON, token,
-                           [comparison, self._comparison()])
+      comparison = ASTNode(
+          ASTNodeType.COMPARISON, token, [comparison, self._comparison()]
+      )
     return comparison
 
   def _comparison(self) -> ASTNode:
@@ -351,7 +354,8 @@ class Parser:
   def _term(self) -> ASTNode:
     factor = self._factor()
     while self.cur_token.type in [
-            TokenType.STAR, TokenType.SLASH, TokenType.PERCENT]:
+        TokenType.STAR, TokenType.SLASH, TokenType.PERCENT
+    ]:
       token = self.cur_token
       self._eat(token.type)
       factor = ASTNode(ASTNodeType.ARITHMETIC, token, [factor, self._factor()])
@@ -363,8 +367,6 @@ class Parser:
       expr = self._logic()
       self._eat(TokenType.RIGHT_PAREN)
       return expr
-    if self.cur_token.type == TokenType.ID:
-      return ASTNode(ASTNodeType.ID, self._id_token())
     if self.cur_token.type in [TokenType.PLUS, TokenType.MINUS]:
       return self._unary()
     return self._value()
@@ -374,6 +376,20 @@ class Parser:
     self._eat(token.type)
     return ASTNode(ASTNodeType.UNARY, token, [self._factor()])
 
+  # ========================================================================= #
+  # Public API                                                                #
+  # ========================================================================= #
+
+  @property
+  def cur_token(self) -> Token:
+    """
+    Get the current token from the lexer.
+    """
+    return self._cur_token
+
   def parse(self) -> ASTNode:
+    """
+    Parse the input program and return the abstract syntax tree (AST).
+    """
     self._cur_token = self._lexer.next_token()
     return self._statements()

@@ -13,6 +13,12 @@ from database.constants import MAX_VALUE_SIZE
 
 @dataclass
 class InsertReq:
+  """
+  InsertReq
+  =========
+  InsertReq class represents an insert request for the B+Tree. It requires the
+  key and value to be inserted, and the update mode.
+  """
   key: bytes
   value: bytes
   mode: UpdateMode
@@ -23,18 +29,28 @@ class InsertReq:
 
 @dataclass
 class DeleteReq:
+  """
+  DeleteReq
+  =========
+  DeleteReq class represents a delete request for the B+Tree. It requires the
+  key to be deleted.
+  """
   key: bytes
   deleted: bool = False
   old: bytes = b""
 
 
 class BTree:
-  def __init__(self, root: int = 0) -> None:
+  def __init__(self, root: int = 0):
     self.root: int = root
     # Callbacks
     self._get: Callable[[int,], BNode]
     self._new: Callable[[BNode,], int]
     self._del: Callable[[int,], None]
+
+  # ========================================================================= #
+  # Internal API                                                              #
+  # ========================================================================= #
 
   def _add_node(self, node: BNode, idx: int, dot: graphviz.Digraph):
     dot.node(str(idx), f"{idx} ({node.type.name}): {node.get(0).key[:5]}")
@@ -152,17 +168,32 @@ class BTree:
   # Public API                                                                #
   # ========================================================================= #
 
+  def render(self, filename: str):
+    """
+    Renders the B+Tree to a PNG file.
+    """
+    dot = graphviz.Digraph()
+    self._add_node(self._get(self.root), self.root, dot)
+    dot.render(filename, format="png", view=True)
+
   def set_callbacks(
       self,
       new: Callable[[BNode,], int],
       get: Callable[[int,], BNode],
       delete: Callable[[int,], None],
   ):
+    """
+    Set the callbacks for the B+Tree. The callbacks are used to create a new
+    node, get a node by its ID, and delete a node by its ID.
+    """
     self._new = new
     self._get = get
     self._del = delete
 
   def delete(self, req: DeleteReq) -> bool:
+    """
+    Deletes a key from the B+Tree.
+    """
     assert len(req.key) != 0
     assert len(req.key) <= MAX_KEY_SIZE
     if self.root == 0:
@@ -179,6 +210,9 @@ class BTree:
     return True
 
   def insert(self, req: InsertReq):
+    """
+    Inserts or updates a key-value pair in the B+Tree.
+    """
     assert len(req.key) != 0
     assert len(req.key) <= MAX_KEY_SIZE
     assert len(req.value) <= MAX_VALUE_SIZE
@@ -207,6 +241,9 @@ class BTree:
       self.root = self._new(splitted[0])
 
   def get(self, key: bytes) -> bytes:
+    """
+    Gets the value of a key from the B+Tree.
+    """
     assert len(key) != 0
     assert len(key) <= MAX_KEY_SIZE
     if self.root == 0:
@@ -217,10 +254,8 @@ class BTree:
       return node.get(idx).value
     raise KeyError("Key not found")
 
-  def render(self, filename: str):
+  def get_by_id(self, idx: int) -> BNode:
     """
-    Render the BTree to a file using graphviz.
+    Gets the node by its ID.
     """
-    dot = graphviz.Digraph()
-    self._add_node(self._get(self.root), self.root, dot)
-    dot.render(filename, format="png", view=True)
+    return self._get(idx)

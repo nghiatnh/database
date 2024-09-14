@@ -15,7 +15,7 @@ class KVTX(Protocol):
     ...
 
   @db.setter
-  def db(self, db: KVStore) -> None:
+  def db(self, db: KVStore):
     ...
 
   @property
@@ -23,7 +23,7 @@ class KVTX(Protocol):
     ...
 
   @root.setter
-  def root(self, root: int) -> None:
+  def root(self, root: int):
     ...
 
   @property
@@ -31,7 +31,7 @@ class KVTX(Protocol):
     ...
 
   @head.setter
-  def head(self, head: int) -> None:
+  def head(self, head: int):
     ...
 
 
@@ -45,5 +45,5 @@ class DatabaseTX(Protocol):
     ...
 
   @db.setter
-  def db(self, db: Database) -> None:
+  def db(self, db: Database):
     ...
