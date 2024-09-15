@@ -1,12 +1,13 @@
 from typing import Union, List, Optional, Tuple
 
-from database.db import DatabaseTX
+from database.db import Database
 from database.db import TableDef
 from database.db import Record
 from database.db import Value
 from database.db import Scanner
 from database.ql.lexer import Lexer
 from database.ql.parser import Parser
+from database.ql.ir import Comparison
 from database.ql.ir import IR
 from database.ql.ir import IRNode
 from database.ql.ir import IRCreateTable
@@ -17,6 +18,7 @@ from database.ql.ir import IRUpdate
 from database.ql.ir import IRDelete
 from database.constants import CompareOP
 from database.constants import ColumnType
+from database.utils import binary
 
 
 class QLExecutor:
@@ -27,7 +29,7 @@ class QLExecutor:
   the database.
   """
 
-  def __init__(self, db: DatabaseTX) -> None:
+  def __init__(self, db: Database) -> None:
     self._db = db
 
   # ========================================================================= #
@@ -60,6 +62,31 @@ class QLExecutor:
     )
 
   def _execute_scan(self, ir_node: IRScan) -> Tuple[List[Record], Scanner]:
+    tdef = self._db.get_table_def(ir_node.table)
+    if ir_node.key1 is None:
+      ir_node.key1 = Comparison(
+          tdef.column_names[0],
+          CompareOP.GE,
+          0 if tdef.columns[0].type == ColumnType.INT else "",
+      )
+    if ir_node.key2 is None:
+      op = CompareOP.GE if ir_node.key1.op in [
+          CompareOP.LE, CompareOP.LT
+      ] else CompareOP.LE
+      if isinstance(ir_node.key1.value, int):
+        ir_node.key2 = Comparison(
+            ir_node.key1.field,
+            op,
+            0 if ir_node.key1.op == CompareOP.LE
+            else binary.uint64(b"\xff" * 8),
+        )
+      else:
+        ir_node.key2 = Comparison(
+            ir_node.key1.field,
+            op,
+            "" if ir_node.key1.op == CompareOP.LE 
+            else b"\xff".decode(),
+        )
     sc = Scanner(
         cmp1=ir_node.key1.op,
         cmp2=ir_node.key2.op,
@@ -92,7 +119,7 @@ class QLExecutor:
   def _execute_select(self, ir_node: IRSelect):
     recs, _ = self._execute_scan(ir_node)
     for rec in recs:
-      rec.rename(ir_node.alias)
+      rec.select(ir_node.aliases)
     return recs
 
   def _execute_insert(self, ir_node: IRInsert):

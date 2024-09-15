@@ -57,13 +57,13 @@ class Record:
         assert value.type == col.type
         self.values[i] = value
         return
-    raise KeyError("Column not found")
+    raise KeyError(f"Column not found {column}")
 
   def __getitem__(self, column: str) -> Value:
     for col, val in zip(self.columns, self.values):
       if col.name == column:
         return val
-    raise KeyError("Column not found")
+    raise KeyError(f"Column not found {column}")
 
   def _validate_column(self, column: str):
     if column in self.column_names:
@@ -118,13 +118,18 @@ class Record:
     self.values.append(Value(ColumnType.INT, b"", value))
     return self
 
-  def rename(self, aliases: Dict[str, str]) -> "Record":
+  def select(self, aliases: Dict[str, str]) -> "Record":
     """
-    Renames the columns in the record.
+    Selects columns from the record using aliases.
     """
-    for i, col in enumerate(self.columns):
-      if col.name in aliases:
-        self.columns[i] = Column(aliases[col.name], col.type)
+    columns = []
+    values = []
+    for field, alias in aliases.items():
+      col_idx = self.column_names.index(field)
+      columns.append(Column(alias, self.columns[col_idx].type))
+      values.append(self.values[col_idx])
+    self.columns = columns
+    self.values = values
     return self
 
   @staticmethod
@@ -133,13 +138,14 @@ class Record:
     Formats the records in a table format.
     """
     if not recs:
-      return "# No records found"
+      return "# No record found"
     res = "‖ " + " ‖ ".join(
         [Record._format_string(x) for x in recs[0].column_names]
     ) + "‖"
     line1 = "\n" + "-" * len(res) + "\n"
     line2 = "\n" + "=" * len(res) + "\n"
-    res = f"# {len(recs)} records found" + line2 + res + line2
+    rec_str = "record" if len(recs) == 1 else "records"
+    res = f"# {len(recs)} {rec_str} found" + line2 + res + line2
     for rec in recs:
       res += "| " + " | ".join(
           [Record._format_string(str(rec[x].value)) for x in rec.column_names]

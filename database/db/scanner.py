@@ -35,6 +35,15 @@ class Scanner:
     self.tdef: Optional[TableDef] = None
     self.it: Optional[BIter] = None
 
+  def __repr__(self) -> str:
+    return (
+        f"Scanner({self.cmp1}, {self.cmp2}, {self.key1}, {self.key2}, "
+        f"{self.index_no}, {self.key_end})"
+    )
+
+  def __str__(self) -> str:
+    return self.__repr__()
+
   # ========================================================================= #
   # Public API                                                                #
   # ========================================================================= #
@@ -66,6 +75,7 @@ class Scanner:
     """
     assert self.it is not None
     assert self.tdef is not None
+    assert self.valid()
     key, value = self.it.deref()
     rec.columns = self.tdef.columns
     if self.index_no == -1:

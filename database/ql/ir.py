@@ -1,4 +1,4 @@
-from typing import List, Union, Tuple, Dict
+from typing import List, Union, Tuple, Dict, Optional
 from dataclasses import dataclass
 
 from database.db import Column
@@ -34,16 +34,16 @@ class IRCreateTable(IRNode):
 @dataclass
 class IRScan(IRNode):
   table: str
-  key1: Comparison
-  key2: Comparison
-  filter: Comparison
+  key1: Optional[Comparison]
+  key2: Optional[Comparison]
+  filter: Optional[Comparison]
   offset: int
   limit: int
 
 
 @dataclass
 class IRSelect(IRScan, IRNode):
-  alias: Dict[str, str]
+  aliases: Dict[str, str]
 
 
 @dataclass
@@ -167,7 +167,7 @@ class IR:
         filter=filt,
         offset=0,
         limit=self._limit(limit),
-        alias=self._select_exprs(select_expr),
+        aliases=self._select_exprs(select_expr),
     )
 
   def _limit(self, node: ASTNode):

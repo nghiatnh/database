@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List
 from dataclasses import dataclass
 
 from database.db.record import Column
@@ -27,24 +27,17 @@ class TableDef:
   # ========================================================================= #
 
   def _check_index_keys(self, index: List[str]) -> List[str]:
-    icols: Dict[str, bool] = {}
-    for c in index:
-      if c not in [x.name for x in self.columns]:
-        raise KeyError(f"Invalid column {c}")
-      icols[c] = True
-    for c in self.columns[:self.pkeys]:
-      if c.name not in icols or not icols[c.name]:
-        index.append(c.name)
-    assert len(index) < self.n_cols
+    if len(set(index)) != len(index):
+      raise ValueError(f"Duplicate index keys: {index}")
+    index += [x for x in self.column_names[:self.pkeys] if x not in index]
+    if len(index) == self.n_cols:
+      raise ValueError(f"Index keys same as columns: {index}")
     return index
 
   def _is_prefix(self, long: List[str], short: List[str]) -> bool:
     if len(long) < len(short):
       return False
-    for i, s in enumerate(short):
-      if long[i] != s:
-        return False
-    return True
+    return all(x == y for x, y in zip(long[:len(short)], short))
 
   # ========================================================================= #
   # Public API                                                                #
@@ -104,13 +97,24 @@ class TableDef:
     """
     Checks the table definition for consistency.
     """
+    if not 0 < self.pkeys < self.n_cols:
+      raise ValueError(
+          "Invalid number of primary keys."
+          f"Expect 0 < pkeys < {self.n_cols}, found {self.pkeys}"
+      )
+    if self.prefix != 0:
+      raise ValueError("Invalid prefix")
+    if len(self.index_prefixes) != 0:
+      raise ValueError("Invalid index prefixes")
     for i, index in enumerate(self.indexes):
       self.indexes[i] = self._check_index_keys(index)
 
   def find_index(self, keys: List[str]) -> int:
     """
-    Finds the index that matches the given keys.
+    Finds the secondary index that matches the given keys.
     """
+    # If the keys are a prefix of the primary keys
+    # Return primary key index (-1)
     if self._is_prefix(self.column_names[:self.pkeys], keys):
       return -1
     winner = -2

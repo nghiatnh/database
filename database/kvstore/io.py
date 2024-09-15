@@ -45,7 +45,8 @@ class FileHandler:
     """
     Opens the file in the given mode.
     """
-    self._file = FileIO(self._path, mode)
+    if not self.is_open:
+      self._file = FileIO(self._path, mode)
 
   def close(self):
     """

@@ -1,15 +1,32 @@
 import os
 from typing import Dict, Optional, Union
+from dataclasses import dataclass
 
 from database.btree import BNode
 from database.btree import BTree
+from database.btree import InsertReq
+from database.btree import DeleteReq
+from database.btree import BIter
 from database.free_list.node import FreeNode
 from database.free_list import FreeList
 from database.kvstore.io import FileHandler
 from database.kvstore.master_page import MasterPage
-from database.protocol import KVTX
+from database.constants import CompareOP
 from database.constants import PAGE_SIZE
 from database.constants import MASTER_SIG
+
+
+@dataclass
+class KVTX:
+  """
+  KVTX
+  ====
+  KVTX class represents a transaction object. It contains the root and head
+  pointers of the BTree and FreeList instances.
+  """
+
+  root: int
+  head: int
 
 
 class KVStore:
@@ -164,14 +181,11 @@ class KVStore:
     """
     self._file.close()
 
-  def begin(self, tx: KVTX) -> KVTX:
+  def begin(self) -> KVTX:
     """
     Begins a new transaction. It returns a new transaction object.
     """
-    tx.db = self
-    tx.root = self._tree.root
-    tx.head = self._free_list.head
-    return tx
+    return KVTX(self._tree.root, self._free_list.head)
 
   def commit(self, tx: KVTX):
     """
@@ -198,3 +212,28 @@ class KVStore:
     transaction.
     """
     self._rollback(tx.root, tx.head)
+
+  def get(self, key: bytes) -> bytes:
+    """
+    Returns the value for the given key.
+    """
+    return self.tree.get(key)
+
+  def update(self, req: InsertReq) -> bool:
+    """
+    Inserts or updates the key-value pair in the database.
+    """
+    self.tree.insert(req)
+    return req.added
+
+  def delete(self, req: DeleteReq) -> bool:
+    """
+    Deletes the key-value pair from the database for the given key.
+    """
+    return self.tree.delete(req)
+
+  def seek(self, key: bytes, op: CompareOP) -> BIter:
+    """
+    Seeks the key in the database and returns an iterator.
+    """
+    return BIter.seek(self.tree, key, op)
