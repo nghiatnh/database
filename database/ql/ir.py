@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from database.db import Column
 from database.ql.ast_node import ASTNode
+from database.ql.constants import TokenType
 from database.constants import ColumnType
 from database.constants import CompareOP
 
@@ -269,6 +270,11 @@ class IR:
         "%": lambda x, y: x % y,
     }
     return fn[node.token.value](left, right)
+
+  def _unary(self, node: ASTNode):
+    if node.token.type == TokenType.MINUS:
+      return -self._visit(node.children[0])
+    return self._visit(node.children[0])
 
   # ========================================================================= #
   # Public API                                                                #

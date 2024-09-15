@@ -373,7 +373,8 @@ class Parser:
 
   def _unary(self) -> ASTNode:
     token = self.cur_token
-    self._eat(token.type)
+    if token.type in [TokenType.PLUS, TokenType.MINUS]:
+      self._eat(token.type)
     return ASTNode(ASTNodeType.UNARY, token, [self._factor()])
 
   # ========================================================================= #
