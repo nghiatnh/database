@@ -1,8 +1,7 @@
-from typing import List, Tuple
+from typing import List
 from dataclasses import dataclass
 
 from database.constants import NodeType
-from database.constants import PAGE_SIZE
 from database.utils import binary
 
 
@@ -147,105 +146,3 @@ class BNode:
         break
       found = i
     return found
-
-  def leaf_insert(self, index: int, key: bytes, value: bytes) -> "BNode":
-    """
-    Inserts a key-value pair at the specified index in a leaf node.
-    """
-    assert self.type == NodeType.LEAF
-    new = BNode(NodeType.LEAF)
-    for i in range(index):
-      new.insert_data(i, self.get(i).key, self.get(i).value)
-      new.set_child(i, self.get_child(i))
-    new.insert_data(index, key, value)
-    for i in range(index, self.nkeys):
-      new.insert_data(i + 1, self.get(i).key, self.get(i).value)
-      new.set_child(i + 1, self.get_child(i))
-    return new
-
-  def leaf_update(self, index: int, key: bytes, value: bytes) -> "BNode":
-    """
-    Updates the key-value pair at the specified index in a leaf node.
-    """
-    assert self.type == NodeType.LEAF
-    new = BNode(NodeType.LEAF)
-    for i in range(index):
-      new.insert_data(i, self.get(i).key, self.get(i).value)
-      new.set_child(i, self.get_child(i))
-    new.insert_data(index, key, value)
-    new.set_child(index, self.get_child(index))
-    for i in range(index + 1, self.nkeys):
-      new.insert_data(i, self.get(i).key, self.get(i).value)
-      new.set_child(i, self.get_child(i))
-    return new
-
-  def leaf_delete(self, index: int) -> "BNode":
-    """
-    Deletes the key-value pair at the specified index in a leaf node.
-    """
-    new = BNode(self.type)
-    for i in range(index):
-      new.insert_data(i, self.get(i).key, self.get(i).value)
-      new.set_child(i, self.get_child(i))
-    for i in range(index + 1, self.nkeys):
-      new.insert_data(i - 1, self.get(i).key, self.get(i).value)
-      new.set_child(i - 1, self.get_child(i))
-    return new
-
-  def split2(self) -> Tuple["BNode", "BNode"]:
-    """
-    Splits the node into two nodes that are as balanced as possible.
-    """
-    lkeys = (self.nkeys + 1) // 2
-    rkeys = self.nkeys - lkeys
-    left = BNode(self.type)
-    right = BNode(self.type)
-    for i in range(lkeys):
-      left.insert_data(i, self.get(i).key, self.get(i).value)
-      left.set_child(i, self.get_child(i))
-    for i in range(rkeys):
-      right.insert_data(i, self.get(lkeys + i).key, self.get(lkeys + i).value)
-      right.set_child(i, self.get_child(lkeys + i))
-    assert right.total_bytes <= PAGE_SIZE
-    return left, right
-
-  def split3(self) -> List["BNode"]:
-    """
-    Splits the node into three nodes that are as balanced as possible.
-    """
-    if self.total_bytes <= PAGE_SIZE:
-      return [self]
-    left, right = self.split2()
-    if left.total_bytes <= PAGE_SIZE:
-      return [left, right]
-    left, mid = left.split2()
-    assert left.total_bytes <= PAGE_SIZE
-    return [left, mid, right]
-
-  def merge(self, right: "BNode") -> "BNode":
-    """
-    Merges the node with the right node.
-    """
-    new = BNode(self.type)
-    for i in range(self.nkeys):
-      new.insert_data(i, self.get(i).key, self.get(i).value)
-      new.set_child(i, self.get_child(i))
-    for i in range(right.nkeys):
-      new.insert_data(i + self.nkeys, right.get(i).key, right.get(i).value)
-      new.set_child(i + self.nkeys, right.get_child(i))
-    return new
-
-  def replace2kid(self, index: int, child: int, key: bytes) -> "BNode":
-    """
-    Replaces the child node and the next child node with the specified key.
-    """
-    new = BNode(self.type)
-    for i in range(index):
-      new.insert_data(i, self.get(i).key, self.get(i).value)
-      new.set_child(i, self.get_child(i))
-    new.insert_data(index, key, b"")
-    new.set_child(index, child)
-    for i in range(index + 2, self.nkeys):
-      new.insert_data(i - 1, self.get(i).key, self.get(i).value)
-      new.set_child(i - 1, self.get_child(i))
-    return new

@@ -180,7 +180,6 @@ class QLExecutor:
     lexer = Lexer(query)
     parser = Parser(lexer)
     ast = parser.parse()
-    ast.render("tree")
     ir_nodes = IR().compile(ast)
     self._db.begin()
     res = None

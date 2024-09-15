@@ -52,6 +52,93 @@ class BTree:
   # Internal API                                                              #
   # ========================================================================= #
 
+  def _leaf_insert(
+      self, node: BNode, index: int, key: bytes, value: bytes
+  ) -> BNode:
+    assert node.type == NodeType.LEAF
+    new = BNode(NodeType.LEAF)
+    for i in range(index):
+      new.insert_data(i, node.get(i).key, node.get(i).value)
+      new.set_child(i, node.get_child(i))
+    new.insert_data(index, key, value)
+    for i in range(index, node.nkeys):
+      new.insert_data(i + 1, node.get(i).key, node.get(i).value)
+      new.set_child(i + 1, node.get_child(i))
+    return new
+
+  def _leaf_update(
+      self, node: BNode, index: int, key: bytes, value: bytes
+  ) -> BNode:
+    assert node.type == NodeType.LEAF
+    new = BNode(NodeType.LEAF)
+    for i in range(index):
+      new.insert_data(i, node.get(i).key, node.get(i).value)
+      new.set_child(i, node.get_child(i))
+    new.insert_data(index, key, value)
+    new.set_child(index, node.get_child(index))
+    for i in range(index + 1, node.nkeys):
+      new.insert_data(i, node.get(i).key, node.get(i).value)
+      new.set_child(i, node.get_child(i))
+    return new
+
+  def _leaf_delete(self, node: BNode, index: int) -> BNode:
+    new = BNode(node.type)
+    for i in range(index):
+      new.insert_data(i, node.get(i).key, node.get(i).value)
+      new.set_child(i, node.get_child(i))
+    for i in range(index + 1, node.nkeys):
+      new.insert_data(i - 1, node.get(i).key, node.get(i).value)
+      new.set_child(i - 1, node.get_child(i))
+    return new
+
+  def _split2(self, node: BNode) -> Tuple[BNode, BNode]:
+    lkeys = (node.nkeys + 1) // 2
+    rkeys = node.nkeys - lkeys
+    left = BNode(node.type)
+    right = BNode(node.type)
+    for i in range(lkeys):
+      left.insert_data(i, node.get(i).key, node.get(i).value)
+      left.set_child(i, node.get_child(i))
+    for i in range(rkeys):
+      right.insert_data(i, node.get(lkeys + i).key, node.get(lkeys + i).value)
+      right.set_child(i, node.get_child(lkeys + i))
+    assert right.total_bytes <= PAGE_SIZE
+    return left, right
+
+  def _split3(self, node: BNode) -> List[BNode]:
+    if node.total_bytes <= PAGE_SIZE:
+      return [node]
+    left, right = self._split2(node)
+    if left.total_bytes <= PAGE_SIZE:
+      return [left, right]
+    left, mid = self._split2(left)
+    assert left.total_bytes <= PAGE_SIZE
+    return [left, mid, right]
+
+  def _merge(self, left: BNode, right: BNode) -> BNode:
+    new = BNode(left.type)
+    for i in range(left.nkeys):
+      new.insert_data(i, left.get(i).key, left.get(i).value)
+      new.set_child(i, left.get_child(i))
+    for i in range(right.nkeys):
+      new.insert_data(i + left.nkeys, right.get(i).key, right.get(i).value)
+      new.set_child(i + left.nkeys, right.get_child(i))
+    return new
+
+  def _replace2kid(
+      self, node: BNode, index: int, child: int, key: bytes
+  ) -> BNode:
+    new = BNode(node.type)
+    for i in range(index):
+      new.insert_data(i, node.get(i).key, node.get(i).value)
+      new.set_child(i, node.get_child(i))
+    new.insert_data(index, key, b"")
+    new.set_child(index, child)
+    for i in range(index + 2, node.nkeys):
+      new.insert_data(i - 1, node.get(i).key, node.get(i).value)
+      new.set_child(i - 1, node.get_child(i))
+    return new
+
   def _add_node(self, node: BNode, idx: int, dot: graphviz.Digraph):
     dot.node(str(idx), f"{idx} ({node.type.name}): {node.get(0).key[:5]}")
     for i in range(node.nkeys):
@@ -110,7 +197,7 @@ class BTree:
     child = self._get(child_id)
     self._del(child_id)
     child = self._insert(child, req)
-    splited = child.split3()
+    splited = self._split3(child)
     return self._internal_replace_child(node, idx, splited)
 
   def _internal_node_delete(self, node: BNode, idx: int, req: DeleteReq):
@@ -122,13 +209,15 @@ class BTree:
     self._del(child_id)
     merge_dir, sibling = self._should_merge(node, idx, updated)
     if merge_dir == MergeDir.LEFT:
-      merged = sibling.merge(updated)
+      merged = self._merge(sibling, updated)
       self._del(node.get_child(idx - 1))
-      return node.replace2kid(idx - 1, self._new(merged), merged.get(0).key)
+      return self._replace2kid(
+          node, idx - 1, self._new(merged), merged.get(0).key
+      )
     if merge_dir == MergeDir.RIGHT:
-      merged = updated.merge(sibling)
+      merged = self._merge(updated, sibling)
       self._del(node.get_child(idx + 1))
-      return node.replace2kid(idx, self._new(merged), merged.get(0).key)
+      return self._replace2kid(node, idx, self._new(merged), merged.get(0).key)
     assert updated.nkeys > 0
     return self._internal_replace_child(node, idx, [updated])
 
@@ -140,12 +229,12 @@ class BTree:
           raise ValueError("Can not insert to existed data")
         req.old = node.get(idx).value
         req.added, req.updated = False, True
-        return node.leaf_update(idx, req.key, req.value)
+        return self._leaf_update(node, idx, req.key, req.value)
       if req.mode == UpdateMode.UPDATE_ONLY:
         raise ValueError("Can not find the data to update")
       req.old = b""
       req.added, req.updated = True, True
-      return node.leaf_insert(idx + 1, req.key, req.value)
+      return self._leaf_insert(node, idx + 1, req.key, req.value)
     if node.type == NodeType.INTERNAL:
       return self._internal_node_insert(node, idx, req)
     raise ValueError("Invalid node type")
@@ -159,7 +248,7 @@ class BTree:
         return BNode(NodeType.NULL)
       req.old = node.get(idx).value
       req.deleted = True
-      return node.leaf_delete(idx)
+      return self._leaf_delete(node, idx)
     if node.type == NodeType.INTERNAL:
       return self._internal_node_delete(node, idx, req)
     raise ValueError("Invalid node type")
@@ -229,7 +318,7 @@ class BTree:
     node = self._get(self.root)
     self._del(self.root)
     node = self._insert(node, req)
-    splitted = node.split3()
+    splitted = self._split3(node)
     if len(splitted) > 1:
       root = BNode(NodeType.INTERNAL)
       for i, node in enumerate(splitted):
