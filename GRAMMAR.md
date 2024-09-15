@@ -1,11 +1,12 @@
 ### STATEMENTS
 
 **statements**: (*statement* `;`)*
-**statement**: *create_table* | *select* | *insert* | *update* | *delete*
+**statement**: *create_table* | *drop_table* | *select* | *insert* | *update* | *delete*
 
-### CREATE TABLE
+### TABLE
 
 **create_table**: `CREATE` `TABLE` *table_name* `(` *declarations* `)`
+**drop_table**: `DROP` `TABLE` *table_name*
 **declarations**: *field_decls* (`,` *index_decls*)? `,` *primary_key_decl*
 **field_decls**: *field_decl* (`,` *field_decl*)*
 **field_decl**: *field_name* *type*
