@@ -104,7 +104,7 @@ class Database:
   def _set(self, table: str, rec: Record, mode: UpdateMode) -> bool:
     tdef = self.get_table_def(table)
     if tdef is None:
-      raise KeyError("Table not found")
+      raise KeyError(f"Table not found: {table}")
     return self._update(tdef, rec, mode)
 
   def _scan(self, tdef: TableDef, sc: "Scanner"):
@@ -167,7 +167,7 @@ class Database:
     """
     tdef = self.get_table_def(table)
     if tdef is None:
-      raise KeyError("Table not found")
+      raise KeyError(f"Table not found: {table}")
     self._get(tdef, rec)
 
   def insert(self, table: str, rec: Record) -> bool:
@@ -194,7 +194,7 @@ class Database:
     """
     tdef = self.get_table_def(table)
     if tdef is None:
-      raise KeyError("Table not found")
+      raise KeyError(f"Table not found: {table}")
     return self._delete(tdef, rec)
 
   def scan(self, table: str, sc: "Scanner") -> Generator[Record, None, None]:
@@ -204,7 +204,7 @@ class Database:
     """
     tdef = self.get_table_def(table)
     if tdef is None:
-      raise KeyError("Table not found")
+      raise KeyError(f"Table not found: {table}")
     self._scan(tdef, sc)
     while sc.valid():
       rec = Record()
@@ -239,6 +239,17 @@ class Database:
     self._update(TDEF_META, meta, UpdateMode.UPSERT)
     table.add_string("def", json.dumps(tdef.to_dict()))
     self._update(TDEF_TABLE, table, UpdateMode.UPSERT)
+
+  def table_drop(self, table: str) -> bool:
+    """
+    Drops a table from the database.
+    """
+    rec = Record().add_string("name", table)
+    found = self._get(TDEF_TABLE, rec)
+    if not found:
+      raise KeyError(f"Table not found: {table}")
+    rec = Record().add_string("name", table)
+    return self._delete(TDEF_TABLE, rec)
 
   def open(self):
     """

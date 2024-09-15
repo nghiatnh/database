@@ -37,6 +37,7 @@ class TokenType(Enum):
 
   # Keywords
   CREATE = "CREATE"
+  DROP = "DROP"
   TABLE = "TABLE"
   INTEGER = "INTEGER"
   STRING = "STRING"
@@ -69,6 +70,7 @@ class ASTNodeType(Enum):
   STATEMENTS = "STATEMENTS"
   STATEMENT = "STATEMENT"
   CREATE_TABLE = "CREATE_TABLE"
+  DROP_TABLE = "DROP_TABLE"
   DECLARATIONS = "DECLARATIONS"
   FIELD_DECLS = "FIELD_DECLS"
   FIELD_DECL = "FIELD_DECL"
@@ -188,6 +190,7 @@ KEYWORDS = {
     TokenType.BY.value: TokenType.BY,
     TokenType.FILTER.value: TokenType.FILTER,
     TokenType.CREATE.value: TokenType.CREATE,
+    TokenType.DROP.value: TokenType.DROP,
     TokenType.TABLE.value: TokenType.TABLE,
     TokenType.DELETE.value: TokenType.DELETE,
     TokenType.INSERT.value: TokenType.INSERT,

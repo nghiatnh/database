@@ -33,6 +33,11 @@ class IRCreateTable(IRNode):
 
 
 @dataclass
+class IRDropTable(IRNode):
+  table: str
+
+
+@dataclass
 class IRScan(IRNode):
   table: str
   key1: Optional[Comparison]
@@ -96,7 +101,7 @@ class IR:
     return nodes
 
   # ------------------------------------------------------------------------- #
-  # Create Table                                                              #
+  # Table                                                                     #
   # ------------------------------------------------------------------------- #
 
   def _create_table(self, node: ASTNode) -> IRCreateTable:
@@ -108,6 +113,9 @@ class IR:
         pkeys,
         indexes,
     )
+
+  def _drop_table(self, node: ASTNode) -> IRDropTable:
+    return IRDropTable(node.children[0].token.value)
 
   def _type(self, node: ASTNode) -> ColumnType:
     return ColumnType.INT if node.token.value == "INTEGER" else ColumnType.BYTES

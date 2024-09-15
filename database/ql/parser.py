@@ -67,6 +67,8 @@ class Parser:
     token = self.cur_token
     if token.type == TokenType.CREATE:
       return self._create_table()
+    if token.type == TokenType.DROP:
+      return self._drop_table()
     if token.type == TokenType.SELECT:
       return self._select()
     if token.type == TokenType.INSERT:
@@ -78,7 +80,7 @@ class Parser:
     raise self._error(token, f"Unexpected token: {token.type.value}")
 
   # ------------------------------------------------------------------------- #
-  # Create Table                                                              #
+  # Table                                                                     #
   # ------------------------------------------------------------------------- #
 
   def _create_table(self) -> ASTNode:
@@ -91,6 +93,13 @@ class Parser:
     self._eat(TokenType.RIGHT_PAREN)
     res = ASTNode(ASTNodeType.CREATE_TABLE, token, [table_name, children])
     return res
+
+  def _drop_table(self) -> ASTNode:
+    token = self.cur_token
+    self._eat(TokenType.DROP)
+    self._eat(TokenType.TABLE)
+    table_name = self._table_name()
+    return ASTNode(ASTNodeType.DROP_TABLE, token, [table_name])
 
   def _declarations(self) -> ASTNode:
     fields, indexes = [self._field_decl()], []

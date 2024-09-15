@@ -11,6 +11,7 @@ from database.ql.ir import Comparison
 from database.ql.ir import IR
 from database.ql.ir import IRNode
 from database.ql.ir import IRCreateTable
+from database.ql.ir import IRDropTable
 from database.ql.ir import IRScan
 from database.ql.ir import IRSelect
 from database.ql.ir import IRInsert
@@ -18,6 +19,7 @@ from database.ql.ir import IRUpdate
 from database.ql.ir import IRDelete
 from database.constants import CompareOP
 from database.constants import ColumnType
+from database.constants import COMPARE_FUNC
 from database.utils import binary
 
 
@@ -38,7 +40,9 @@ class QLExecutor:
 
   def _execute(self, ir_node: IRNode) -> Optional[List[Record]]:
     if isinstance(ir_node, IRCreateTable):
-      return self._ir_create_table(ir_node)
+      return self._execute_create_table(ir_node)
+    if isinstance(ir_node, IRDropTable):
+      return self._execute_drop_table(ir_node)
     if isinstance(ir_node, IRSelect):
       return self._execute_select(ir_node)
     if isinstance(ir_node, IRInsert):
@@ -49,7 +53,7 @@ class QLExecutor:
       return self._execute_delete(ir_node)
     raise ValueError(f"Invalid IR node: {ir_node}")
 
-  def _ir_create_table(self, ir_node: IRCreateTable):
+  def _execute_create_table(self, ir_node: IRCreateTable):
     self._db.table_new(
         TableDef(
             name=ir_node.table,
@@ -60,6 +64,19 @@ class QLExecutor:
             index_prefixes=[],
         )
     )
+
+  def _execute_drop_table(self, ir_node: IRDropTable):
+    self._execute_delete(
+        IRDelete(
+            table=ir_node.table,
+            key1=None,
+            key2=None,
+            filter=None,
+            offset=0,
+            limit=-1,
+        )
+    )
+    self._db.table_drop(ir_node.table)
 
   def _execute_scan(self, ir_node: IRScan) -> Tuple[List[Record], Scanner]:
     tdef = self._db.get_table_def(ir_node.table)
@@ -84,7 +101,7 @@ class QLExecutor:
         ir_node.key2 = Comparison(
             ir_node.key1.field,
             op,
-            "" if ir_node.key1.op == CompareOP.LE 
+            "" if ir_node.key1.op == CompareOP.LE
             else b"\xff".decode(),
         )
     sc = Scanner(
@@ -98,19 +115,13 @@ class QLExecutor:
     while ir_node.limit < 0 or len(recs) < ir_node.limit:
       try:
         rec = next(it)
-        if ir_node.filter is not None:
-          if ir_node.filter.op == CompareOP.GT:
-            if rec[ir_node.filter.field].value <= ir_node.filter.value:
-              continue
-          elif ir_node.filter.op == CompareOP.GE:
-            if rec[ir_node.filter.field].value < ir_node.filter.value:
-              continue
-          elif ir_node.filter.op == CompareOP.LT:
-            if rec[ir_node.filter.field].value >= ir_node.filter.value:
-              continue
-          elif ir_node.filter.op == CompareOP.LE:
-            if rec[ir_node.filter.field].value > ir_node.filter.value:
-              continue
+        if (
+            ir_node.filter is not None and
+            not COMPARE_FUNC[ir_node.filter.op](
+                rec[ir_node.filter.field].value, ir_node.filter.value
+            )
+        ):
+          continue
         recs.append(rec)
       except StopIteration:
         break
@@ -142,11 +153,11 @@ class QLExecutor:
       rec = Record(
           columns=[
               x for x in rec.columns
-              if x.name in sc.tdef.column_names[: sc.tdef.pkeys]
+              if x.name in sc.tdef.column_names[:sc.tdef.pkeys]
           ],
           values=[
               rec[x.name] for x in rec.columns
-              if x.name in sc.tdef.column_names[: sc.tdef.pkeys]
+              if x.name in sc.tdef.column_names[:sc.tdef.pkeys]
           ],
       )
       self._db.delete(ir_node.table, rec)
