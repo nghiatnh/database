@@ -11,3 +11,5 @@ class NodeType(Enum):
 PAGE_SIZE = 4096
 MAX_KEY_SZ = 1000
 MAX_VALUE_SZ = 3000
+
+MASTER_SIG = "BuildMyOwnDB2024"
