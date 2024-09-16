@@ -1,14 +1,31 @@
 import os
-from typing import Optional, Dict
+from typing import Optional, Dict, Union
 from pathlib import Path
 
-from database.btree import node_factory
 from database.btree import BNode
+from database.btree import LeafNode
+from database.btree import InternalNode
 from database.btree import BTree
+from database.stack import StackNode
+from database.stack import Stack
 from database.kvstore.master_page import MasterPage
 from database.kvstore.io import FileHandler
+from database.utils import binary
+from database.constants import NodeType
 from database.constants import MASTER_SIG
 from database.constants import PAGE_SIZE
+
+
+Node = Union[BNode, StackNode]
+
+
+def node_factory(data: bytes) -> Node:
+  node_type = NodeType(binary.int16(data[:2]))
+  if node_type == NodeType.LEAF:
+    return LeafNode.deserialize(data)
+  if node_type == NodeType.INTERNAL:
+    return InternalNode.deserialize(data)
+  return StackNode.deserialize(data)
 
 
 class KVStore:
@@ -16,11 +33,15 @@ class KVStore:
     self.tree = BTree(
         get_=self._page_get, new_=self._page_new, del_=self._page_del
     )
+    self.stack = Stack(
+        get_=self._page_get, new_=self._page_new, del_=self._page_del
+    )
     self._file = FileHandler(path)
     self._version = 1
     self._flushed = 0
-    self._added = 0
-    self._updated: Dict[int, BNode] = {}
+    self._n_added = 0
+    self._n_free = 0
+    self._updated: Dict[int, Node] = {}
 
   @property
   def master_page(self) -> MasterPage:
@@ -28,7 +49,8 @@ class KVStore:
         sig=MASTER_SIG,
         version=self._version,
         flushed=self._flushed,
-        root=self.tree.root
+        root=self.tree.root,
+        top=self.stack.top,
     )
 
   # ========================================================================= #
@@ -36,23 +58,28 @@ class KVStore:
   # ========================================================================= #
 
   # ------------------------------------------------------------------------- #
-  # Callbacks for BTree                                                       #
+  # Callbacks for BTree and Stack                                             #
   # ------------------------------------------------------------------------- #
 
-  def _page_new(self, node: BNode) -> int:
-    page_id = self._flushed + self._added
+  def _page_new(self, node: Node) -> int:
+    if self._n_free < self.stack.total_length:
+      page_id = self.stack.get(self._n_free)
+      self._updated[page_id] = node
+      self._n_free += 1
+      return page_id
+    page_id = self._flushed + self._n_added
     self._updated[page_id] = node
-    self._added += 1
+    self._n_added += 1
     return page_id
 
-  def _page_get(self, page_id: int) -> BNode:
+  def _page_get(self, page_id: int) -> Node:
     if page_id in self._updated:
       return self._updated[page_id]
     data = self._file.read(page_id * PAGE_SIZE, PAGE_SIZE)
     return node_factory(data)
 
   def _page_del(self, page_id: int) -> None:
-    self._updated.pop(page_id, None)
+    self._updated[page_id] = None
 
   # ------------------------------------------------------------------------- #
   # Master Page                                                               #
@@ -64,11 +91,13 @@ class KVStore:
       self._version = 1
       self._flushed = 1
       self.tree.root = 0
+      self.stack.top = 0
       return
     master_page = MasterPage.deserialize(data)
     self._version = master_page.version
     self._flushed = master_page.flushed
     self.tree.root = master_page.root
+    self.stack.top = master_page.top
 
   def _master_save(self) -> None:
     self._file.write(0, self.master_page.serialize())
@@ -83,12 +112,19 @@ class KVStore:
       self._file.extend(n_pages * PAGE_SIZE)
 
   def _flush(self) -> None:
-    n_pages = self._flushed + self._added
+    self.stack.update(
+        self._n_free,
+        [page_id for page_id, x in self._updated.items() if x is None]
+    )
+    n_pages = self._flushed + self._n_added
     self._extend_file(n_pages)
     for page_id, node in self._updated.items():
+      if node is None:
+        continue
       self._file.write(page_id * PAGE_SIZE, node.serialize())
     self._flushed = n_pages
-    self._added = 0
+    self._n_added = 0
+    self._n_free = 0
     self._updated.clear()
     self._master_save()
 

@@ -77,6 +77,7 @@ class LeafNode(BNode):
   @staticmethod
   def deserialize(data: bytes) -> "LeafNode":
     node_type = NodeType(binary.int16(data[:2]))
+    assert node_type == NodeType.LEAF
     n_keys = binary.int32(data[2:6])
     data = data[6:]
 
@@ -128,6 +129,7 @@ class InternalNode(BNode):
   @staticmethod
   def deserialize(data: bytes) -> "InternalNode":
     node_type = NodeType(binary.int16(data[:2]))
+    assert node_type == NodeType.INTERNAL
     n_keys = binary.int32(data[2:6])
     data = data[6:]
 
@@ -135,19 +137,10 @@ class InternalNode(BNode):
     data = data[n_keys * 8:]
 
     keys = []
-    for i in range(n_keys):
+    for _ in range(n_keys):
       key_len = binary.int16(data[:2])
       key = data[2:2 + key_len]
       keys.append(key)
       data = data[2 + key_len:]
 
     return InternalNode(node_type, keys, children)
-
-
-def node_factory(data: bytes) -> BNode:
-  node_type = NodeType(binary.int16(data[:2]))
-  if node_type not in [NodeType.LEAF, NodeType.INTERNAL]:
-    raise ValueError("Invalid node type")
-  if node_type == NodeType.LEAF:
-    return LeafNode.deserialize(data)
-  return InternalNode.deserialize(data)

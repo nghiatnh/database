@@ -39,23 +39,23 @@ class BTree:
   # Rendering                                                                 #
   # ------------------------------------------------------------------------- #
 
-  def _add_node(self, node: BNode, dot: graphviz.Digraph):
+  def _add_node(self, node: BNode, idx: int, dot: graphviz.Digraph):
     if isinstance(node, LeafNode):
-      self._add_leaf(node, dot)
+      self._add_leaf(node, idx, dot)
     if isinstance(node, InternalNode):
-      self._add_internal(node, dot)
+      self._add_internal(node, idx, dot)
 
-  def _add_leaf(self, node: LeafNode, dot: graphviz.Digraph):
+  def _add_leaf(self, node: LeafNode, idx: int, dot: graphviz.Digraph):
     value_str = "\n".join([str(x[:5]) for x in node.keys])
-    dot.node(str(id(node)), label=f"Leaf: {node.n_bytes}\n{value_str}")
+    dot.node(str(idx), label=f"Leaf: {node.n_bytes}\n{value_str}")
 
-  def _add_internal(self, node: InternalNode, dot: graphviz.Digraph):
+  def _add_internal(self, node: InternalNode, idx: int, dot: graphviz.Digraph):
     value_str = "\n".join([str(x[:5]) for x in node.keys])
-    dot.node(str(id(node)), label=f"Internal: {node.n_bytes}\n{value_str}")
-    for child in node.children:
-      child = self._get(child)
-      self._add_node(child, dot)
-      dot.edge(str(id(node)), str(id(child)))
+    dot.node(str(idx), label=f"Internal: {node.n_bytes}\n{value_str}")
+    for child_id in node.children:
+      child = self._get(child_id)
+      self._add_node(child, child_id, dot)
+      dot.edge(str(idx), str(child_id))
 
   # ------------------------------------------------------------------------- #
   # Insertion                                                                 #
@@ -294,5 +294,5 @@ class BTree:
   def render(self, filename="btree.gv") -> None:
     dot = graphviz.Digraph()
     root = self._get(self.root)
-    self._add_node(root, dot)
+    self._add_node(root, self.root, dot)
     dot.render(filename, format="png", cleanup=True, view=True)
