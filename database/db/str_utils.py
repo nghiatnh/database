@@ -24,14 +24,12 @@ def encode_keys(prefix: int, keys: List[Value]) -> bytes:
 
 
 def decode_values(data: bytes, out: List[Value]) -> List[Value]:
-  i = 0
   for v in out:
     if v.type == ValueType.TEXT:
       end = data.find(b"\0")
       v.data = data[:end].replace(b"\1\1", b"\0").replace(b"\1\2", b"\1")
-      i = end + 1
+      data = data[end + 1:]
     else:
       v.data = data[:8]
-      i += 8
-    data = data[i:]
+      data = data[8:]
   return out

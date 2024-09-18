@@ -6,6 +6,10 @@ from database.btree import BNode
 from database.btree import LeafNode
 from database.btree import InternalNode
 from database.btree import BTree
+from database.btree import SetRequest
+from database.btree import SetResponse
+from database.btree import DeleteRequest
+from database.btree import DeleteResponse
 from database.stack import StackNode
 from database.stack import Stack
 from database.kvstore.master_page import MasterPage
@@ -149,10 +153,14 @@ class KVStore:
   def get(self, key: bytes) -> Optional[bytes]:
     return self.tree.get(key)
 
-  def insert(self, key: bytes, value: bytes) -> None:
-    self.tree.insert(key, value)
-    self._flush()
+  def set(self, req: SetRequest) -> SetResponse:
+    res = self.tree.set(req)
+    if res.updated:
+      self._flush()
+    return res
 
-  def delete(self, key: bytes) -> None:
-    self.tree.delete(key)
-    self._flush()
+  def delete(self, req: DeleteRequest) -> DeleteResponse:
+    res = self.tree.delete(req)
+    if res.deleted:
+      self._flush()
+    return res

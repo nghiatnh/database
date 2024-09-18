@@ -20,6 +20,12 @@ class CompareOP(Enum):
   GE = 3
 
 
+class SetMode(Enum):
+  INSERT_ONLY = 1
+  UPDATE_ONLY = 2
+  UPSERT = 3
+
+
 PAGE_SIZE = 4096
 MAX_KEY_SZ = 1000
 MAX_VALUE_SZ = 3000

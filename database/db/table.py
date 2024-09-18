@@ -83,6 +83,8 @@ class TableDef:
     for field in self.column_types:
       if field not in [ValueType.TEXT, ValueType.INTEGER]:
         raise ValueError("Invalid column type")
+    if self.primary_index.column in [x.column for x in self.indexes]:
+      raise ValueError("primary index column cannot be in indexes")
     for index in [self.primary_index, *self.indexes]:
       if index.prefix != 0:
         raise ValueError("index prefix must be 0")
@@ -107,6 +109,14 @@ class TableDef:
       if c == column:
         return t
     raise ValueError(f"{column} not found in columns")
+
+  def find_index(self, column: str) -> Index:
+    if column not in self.columns:
+      raise ValueError(f"{column} not found in columns")
+    for index in [self.primary_index, *self.indexes]:
+      if index.column == column:
+        return index
+    raise ValueError(f"{column} not found in indexes")
 
 
 TDEF_META = TableDef(

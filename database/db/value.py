@@ -34,6 +34,12 @@ class Value:
     return self.integer
 
   @staticmethod
+  def empty(value_type: ValueType, name: str = "") -> "Value":
+    if value_type == ValueType.TEXT:
+      return Value(ValueType.TEXT, b"", name)
+    return Value(ValueType.INTEGER, b"", name)
+
+  @staticmethod
   def from_text(text: str, name: str = "") -> "Value":
     return Value(ValueType.TEXT, text.encode("utf-8"), name)
 

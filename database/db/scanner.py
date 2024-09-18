@@ -1,10 +1,10 @@
+from typing import List
 from dataclasses import dataclass
 
 from database.btree import BIter
 from database.db import str_utils
 from database.db.value import Value
 from database.db.table import Record
-from database.db.table import TableDef
 from database.constants import CompareOP
 from database.constants import ValueType
 from database.constants import COMPARE_FN
@@ -28,26 +28,29 @@ class Scanner:
         COMPARE_FN[self.cmp2](key, self.key2)
     )
 
-  def deref(self, tdef: TableDef, rec: Record) -> Record:
+  def deref(
+      self,
+      columns: List[str],
+      column_types: List[ValueType],
+      nkeys: int,
+      rec: Record,
+  ) -> Record:
     key_bytes, value_bytes = self.it.deref()
-    if tdef.get_column_type(tdef.primary_index.column) == ValueType.TEXT:
-      key = str_utils.decode_values(
-          key_bytes[8:], [Value.from_text("", tdef.primary_index.column)]
-      )[0]
-    else:
-      key = str_utils.decode_values(
-          key_bytes[8:], [Value.from_integer(0, tdef.primary_index.column)]
-      )[0]
-    values = []
-    for column, tp in zip(tdef.columns, tdef.column_types):
-      if column != key.name:
-        if tp == ValueType.TEXT:
-          values.append(Value.from_text("", column))
-        else:
-          values.append(Value.from_integer(0, column))
-    str_utils.decode_values(value_bytes, values)
-    rec = Record([key])
-    rec.values.extend(values)
+    keys = str_utils.decode_values(
+        key_bytes[8:],
+        [
+            Value.empty(tp, column)
+            for tp, column in zip(column_types[:nkeys], columns[:nkeys])
+        ],
+    )
+    values = str_utils.decode_values(
+        value_bytes,
+        [
+            Value.empty(tp, column)
+            for tp, column in zip(column_types[nkeys:], columns[nkeys:])
+        ]
+    )
+    rec = Record(keys + values)
     return rec
 
   def next(self) -> None:

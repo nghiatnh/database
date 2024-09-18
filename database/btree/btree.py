@@ -1,19 +1,74 @@
 from typing import Callable, List, Tuple, Optional
+from enum import Enum
+from dataclasses import dataclass
 import copy
 import graphviz
 
 from database.btree.bnode import BNode
 from database.btree.bnode import LeafNode
 from database.btree.bnode import InternalNode
+from database.constants import SetMode
 from database.constants import PAGE_SIZE
 from database.constants import MAX_KEY_SZ
 from database.constants import MAX_VALUE_SZ
 
 
-class MergeDirection:
+class MergeDirection(Enum):
   NONE = 0
   LEFT = 1
   RIGHT = 2
+
+
+@dataclass
+class SetRequest:
+  key: bytes
+  value: bytes
+  mode: SetMode = SetMode.UPSERT
+
+  def check(self):
+    assert 0 < len(self.key) <= MAX_KEY_SZ
+    assert len(self.value) <= MAX_VALUE_SZ
+
+
+@dataclass
+class SetResponse:
+  added: bool = False
+  updated: bool = False
+  message: str = ""
+
+  def update_ok(self):
+    self.added = False
+    self.updated = True
+
+  def add_ok(self):
+    self.added = True
+    self.updated = True
+
+  def set_fail(self, msg: str = ""):
+    self.added = False
+    self.updated = False
+    self.message = msg
+
+
+@dataclass
+class DeleteRequest:
+  key: bytes
+
+  def check(self):
+    assert 0 < len(self.key) <= MAX_KEY_SZ
+
+
+@dataclass
+class DeleteResponse:
+  deleted: bool = False
+  message: str = ""
+
+  def delete_ok(self):
+    self.deleted = True
+
+  def delete_fail(self, msg: str = ""):
+    self.deleted = False
+    self.message = msg
 
 
 class BTree:
@@ -61,37 +116,47 @@ class BTree:
   # Insertion                                                                 #
   # ------------------------------------------------------------------------- #
 
-  def _insert(self, node: BNode, key: bytes, value: bytes) -> BNode:
-    idx = node.lookup_le(key)
+  def _set(self, node: BNode, req: SetRequest, res: SetResponse) -> BNode:
+    idx = node.lookup_le(req.key)
     if isinstance(node, LeafNode):
-      if node.keys[idx] == key:
-        return self._update_leaf(node, idx, value)
-      return self._insert_leaf(node, idx + 1, key, value)
+      if node.keys[idx] == req.key:
+        if req.mode == SetMode.INSERT_ONLY:
+          res.set_fail("Key already exists")
+          return node
+        res.update_ok()
+        return self._update_leaf(node, idx, req)
+      if req.mode == SetMode.UPDATE_ONLY:
+        res.set_fail("Key not found")
+        return node
+      res.add_ok()
+      return self._insert_leaf(node, idx + 1, req)
     if isinstance(node, InternalNode):
-      return self._insert_internal(node, idx, key, value)
+      return self._set_internal(node, idx, req, res)
     raise ValueError(f"Invalid node type: {node.type}")
 
   def _insert_leaf(
-      self, node: LeafNode, idx: int, key: bytes, value: bytes
+      self, node: LeafNode, idx: int, req: SetRequest
   ) -> LeafNode:
     new = copy.deepcopy(node)
-    new.keys.insert(idx, key)
-    new.values.insert(idx, value)
+    new.keys.insert(idx, req.key)
+    new.values.insert(idx, req.value)
     return new
 
   def _update_leaf(
-      self, node: LeafNode, idx: int, value: bytes
+      self, node: LeafNode, idx: int, req: SetRequest
   ) -> LeafNode:
     new = copy.deepcopy(node)
-    new.values[idx] = value
+    new.values[idx] = req.value
     return new
 
-  def _insert_internal(
-      self, node: InternalNode, idx: int, key: bytes, value: bytes
+  def _set_internal(
+      self, node: InternalNode, idx: int, req: SetRequest, res: SetResponse
   ) -> InternalNode:
     child = self._get(node.children[idx])
     self._del(node.children[idx])
-    new = self._insert(child, key, value)
+    new = self._set(child, req, res)
+    if not res.updated:
+      return node
     if new.n_bytes > PAGE_SIZE:
       children = self._split(new)
       return self._replace_child(node, idx, children)
@@ -145,12 +210,21 @@ class BTree:
   # Deletion                                                                  #
   # ------------------------------------------------------------------------- #
 
-  def _delete(self, node: BNode, key: bytes) -> BNode:
-    idx = node.lookup_le(key)
+  def _delete(
+      self,
+      node: BNode,
+      req: DeleteRequest,
+      res: DeleteResponse,
+  ) -> BNode:
+    idx = node.lookup_le(req.key)
     if isinstance(node, LeafNode):
+      if node.keys[idx] != req.key:
+        res.delete_fail("Key not found")
+        return node
+      res.delete_ok()
       return self._delete_leaf(node, idx)
     if isinstance(node, InternalNode):
-      return self._delete_internal(node, idx, key)
+      return self._delete_internal(node, idx, req, res)
     raise ValueError(f"Invalid node type: {node.type}")
 
   def _delete_leaf(self, node: LeafNode, idx: int) -> LeafNode:
@@ -160,10 +234,16 @@ class BTree:
     return new
 
   def _delete_internal(
-      self, node: InternalNode, idx: int, key: bytes
+      self,
+      node: InternalNode,
+      idx: int,
+      req: DeleteRequest,
+      res: DeleteResponse
   ) -> InternalNode:
     child = self._get(node.children[idx])
-    child = self._delete(child, key)
+    child = self._delete(child, req, res)
+    if not res.deleted:
+      return node
     # PAGE_SIZE // 4 is a heuristic to determine if we should merge
     if child.n_bytes < PAGE_SIZE // 4:
       merge_dir, sibling = self._should_merge(node, child, idx)
@@ -246,20 +326,23 @@ class BTree:
   # Public API                                                                #
   # ========================================================================= #
 
-  def insert(self, key: bytes, value: bytes) -> None:
-    assert 0 < len(key) <= MAX_KEY_SZ
-    assert len(value) <= MAX_VALUE_SZ
+  def set(self, req: SetRequest) -> SetResponse:
+    req.check()
+    res = SetResponse()
     if self.root == 0:
       leaf = LeafNode(keys=[], values=[])
       leaf.keys.append(b"")
       leaf.values.append(b"")
-      leaf.keys.append(key)
-      leaf.values.append(value)
+      leaf.keys.append(req.key)
+      leaf.values.append(req.value)
       self.root = self._new(leaf)
-      return
+      res.add_ok()
+      return res
     root = self._get(self.root)
     self._del(self.root)
-    root = self._insert(root, key, value)
+    root = self._set(root, req, res)
+    if not res.updated:
+      return res
     if root.n_bytes > PAGE_SIZE:
       children = self._split(root)
       root = InternalNode(
@@ -268,18 +351,24 @@ class BTree:
           children=[self._new(x) for x in children],
       )
     self.root = self._new(root)
+    return res
 
-  def delete(self, key: bytes) -> None:
-    assert 0 < len(key) <= MAX_KEY_SZ
+  def delete(self, req: DeleteRequest) -> DeleteResponse:
+    req.check()
+    res = DeleteResponse()
     if self.root == 0:
-      raise ValueError("Key not found")
+      res.delete_fail("Key not found")
+      return res
     root = self._get(self.root)
     self._del(self.root)
-    root = self._delete(root, key)
+    root = self._delete(root, req, res)
+    if not res.deleted:
+      return res
     if isinstance(root, InternalNode) and root.n_keys == 1:
       self.root = root.children[0]
-      return
+      return res
     self.root = self._new(root)
+    return res
 
   def get(self, key: bytes) -> Optional[bytes]:
     assert 0 < len(key) <= MAX_KEY_SZ
