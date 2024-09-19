@@ -206,3 +206,12 @@ class Database:
       rec = sc.deref(columns, column_types, 2, Record([]))
       yield self._get(tdef, rec[tdef.primary_index.column])
       sc.next()
+
+  def begin(self) -> None:
+    self.kv.begin()
+
+  def commit(self) -> None:
+    self.kv.commit()
+
+  def rollback(self) -> None:
+    self.kv.rollback()

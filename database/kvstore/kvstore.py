@@ -1,6 +1,7 @@
 import os
 from typing import Optional, Dict, Union
 from pathlib import Path
+from dataclasses import dataclass
 
 from database.btree import BNode
 from database.btree import LeafNode
@@ -32,13 +33,19 @@ def node_factory(data: bytes) -> Node:
   return StackNode.deserialize(data)
 
 
+@dataclass
+class KVTX:
+  root: int
+  top: int
+
+
 class KVStore:
   def __init__(self, path: Path) -> None:
     self.tree = BTree(
         get_=self._page_get, new_=self._page_new, del_=self._page_del
     )
     self.stack = Stack(
-        get_=self._page_get, new_=self._page_new, del_=self._page_del
+        new_=self._page_new, get_=self._page_get, use_=self._page_use
     )
     self._file = FileHandler(path)
     self._version = 1
@@ -46,6 +53,7 @@ class KVStore:
     self._n_added = 0
     self._n_free = 0
     self._updated: Dict[int, Node] = {}
+    self._tx: Optional[KVTX] = None
 
   @property
   def master_page(self) -> MasterPage:
@@ -76,6 +84,9 @@ class KVStore:
     self._n_added += 1
     return page_id
 
+  def _page_use(self, page_id: int, node: Node) -> None:
+    self._updated[page_id] = node
+
   def _page_get(self, page_id: int) -> Node:
     if page_id in self._updated:
       return self._updated[page_id]
@@ -96,12 +107,14 @@ class KVStore:
       self._flushed = 1
       self.tree.root = 0
       self.stack.top = 0
+      self._updated.clear()
       return
     master_page = MasterPage.deserialize(data)
     self._version = master_page.version
     self._flushed = master_page.flushed
     self.tree.root = master_page.root
     self.stack.top = master_page.top
+    self._updated.clear()
 
   def _master_save(self) -> None:
     self._file.write(0, self.master_page.serialize())
@@ -155,12 +168,29 @@ class KVStore:
 
   def set(self, req: SetRequest) -> SetResponse:
     res = self.tree.set(req)
-    if res.updated:
-      self._flush()
     return res
 
   def delete(self, req: DeleteRequest) -> DeleteResponse:
     res = self.tree.delete(req)
-    if res.deleted:
-      self._flush()
     return res
+
+  def begin(self):
+    if self._tx is not None:
+      raise ValueError("Transaction already started")
+    self._tx = KVTX(root=self.tree.root, top=self.stack.top)
+
+  def commit(self):
+    if self._tx is None:
+      raise ValueError("No transaction started")
+    self._tx = None
+    self._flush()
+
+  def rollback(self):
+    if self._tx is None:
+      raise ValueError("No transaction started")
+    self.tree.root = self._tx.root
+    self.stack.top = self._tx.top
+    self._tx = None
+    self._n_free = 0
+    self._n_added = 0
+    self._updated.clear()

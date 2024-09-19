@@ -11,13 +11,13 @@ class Stack:
       *,
       new_: Callable[[StackNode], int] = None,
       get_: Callable[[int], StackNode] = None,
-      del_: Callable[[int], None] = None
+      use_: Callable[[int, StackNode], None] = None,
   ) -> None:
     self.top = 0
     # Callbacks
     self._new = new_
     self._get = get_
-    self._del = del_
+    self._use = use_
 
   # ========================================================================= #
   # Internal API                                                              #
@@ -39,25 +39,20 @@ class Stack:
       if last != -1 and next_node.n_children > 0:
         dot.edge(str(last), str(next_node.children[0]))
 
-  def _push(self, total_length: int, new_children: List[int]):
-    if self.top != 0:
-      top = self._get(self.top)
-      if top.n_children < STACK_CAP:
-        new_children = new_children + [self.top]
+  def _push(self, freed: List[int], reuse: List[int]):
+    while len(freed) > 0:
+      size = min(len(freed), STACK_CAP)
+      node = StackNode(next_node=self.top, children=[])
+      for child in freed[:size]:
+        node.children.append(child)
+      freed = freed[size:]
+      if len(reuse) > 0:
+        self.top = reuse[0]
+        reuse = reuse[1:]
+        self._use(self.top, node)
       else:
-        top = StackNode(next_node=self.top, children=[])
-    else:
-      top = StackNode(next_node=0, children=[])
-    for child in new_children:
-      top.children.append(child)
-      self._del(child)
-      if len(top.children) == STACK_CAP:
-        self.top = self._new(top)
-        top = StackNode(next_node=self.top, children=[])
-      total_length += 1
-    if len(top.children) > 0:
-      self.top = self._new(top)
-    self._get(self.top).total_length = total_length
+        self.top = self._new(node)
+    assert len(reuse) == 0
 
   # ========================================================================= #
   # Public API                                                                #
@@ -81,24 +76,32 @@ class Stack:
       top = self._get(top.next_node)
     return top.children[top.n_children-idx-1]
 
-  def update(self, n_used: int, new_children: List[int]) -> None:
-    # Remove n_used elements from the stack
-    if n_used == 0 and len(new_children) == 0:
+  def update(self, n_used: int, freed: List[int]) -> None:
+    assert 0 <= n_used <= self.total_length
+
+    if n_used == 0 and len(freed) == 0:
       return
-    total_length = self.total_length - n_used
-    while n_used > 0 and self.top != 0:
+
+    total = self.total_length
+    reuse = []
+    while self.top != 0 and len(reuse) * STACK_CAP < len(freed):
       node = self._get(self.top)
-      new_children = new_children + [self.top]
+      freed.append(self.top)
       if n_used >= node.n_children:
         n_used -= node.n_children
       else:
-        new_children = node.children[:node.n_children-n_used] + new_children
-        total_length -= node.n_children - n_used  # Will be added back
+        remain = node.n_children - n_used
         n_used = 0
+        while remain > 0 and len(reuse) * STACK_CAP < len(freed) + remain:
+          remain -= 1
+          reuse.append(node.children[remain])
+        for i in range(remain):
+          freed.append(node.children[i])
+      total -= node.n_children
       self.top = node.next_node
-    assert n_used == 0
-    # Add new children to the stack
-    self._push(total_length, new_children)
+    assert len(reuse) * STACK_CAP >= len(freed) or self.top == 0
+    self._push(freed, reuse)
+    self._get(self.top).total_length = total + len(freed)
 
   def render(self, filename="stack.gv") -> None:
     dot = graphviz.Digraph()
