@@ -80,6 +80,9 @@ class Table:
   def n_records(self) -> int:
     return len(self.records)
 
+  def dump(self) -> list:
+    return [{x.name: x.value for x in rec.values} for rec in self.records]
+
 
 @dataclass
 class Index:
