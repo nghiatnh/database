@@ -7,6 +7,7 @@ from database.btree import SetRequest
 from database.btree import DeleteRequest
 from database.btree import BIter
 from database.kvstore import KVStore
+from database.kvstore import KVTX
 from database.db import str_utils
 from database.db.value import Value
 from database.db.table import Record
@@ -28,6 +29,32 @@ class IndexOp(Enum):
 class Database:
   def __init__(self, path: Path) -> None:
     self.kv = KVStore(path)
+
+  def open(self) -> None:
+    self.kv.open()
+
+  def close(self) -> None:
+    self.kv.close()
+
+  def begin_read(self, tx: "DBTX") -> None:
+    self.kv.begin_read(tx.kv)
+
+  def end_read(self, tx: "DBTX") -> None:
+    self.kv.end_read(tx.kv)
+
+  def begin(self, tx: "DBTX"):
+    self.kv.begin(tx.kv)
+
+  def commit(self, tx: "DBTX"):
+    self.kv.commit(tx.kv)
+
+  def rollback(self, tx: "DBTX"):
+    self.kv.rollback(tx.kv)
+
+
+class DBTX:
+  def __init__(self) -> None:
+    self.kv = KVTX()
 
   # ========================================================================= #
   # Internal API                                                              #
@@ -136,12 +163,6 @@ class Database:
   # Public API                                                                #
   # ========================================================================= #
 
-  def open(self) -> None:
-    self.kv.open()
-
-  def close(self) -> None:
-    self.kv.close()
-
   def get_table_def(self, table_name: str) -> TableDef:
     rec = self._get(TDEF_TABLES, Value.from_text(table_name, "name"))
     if rec is None:
@@ -206,12 +227,3 @@ class Database:
       rec = sc.deref(columns, column_types, 2, Record([]))
       yield self._get(tdef, rec[tdef.primary_index.column])
       sc.next()
-
-  def begin(self) -> None:
-    self.kv.begin()
-
-  def commit(self) -> None:
-    self.kv.commit()
-
-  def rollback(self) -> None:
-    self.kv.rollback()
