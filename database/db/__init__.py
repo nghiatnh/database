@@ -2,5 +2,7 @@ from database.db.value import Value
 from database.db.table import Record
 from database.db.table import Table
 from database.db.table import TableDef
+from database.db.table import Index
 from database.db.db import Database
 from database.db.db import DBTX
+from database.db.scanner import Scanner

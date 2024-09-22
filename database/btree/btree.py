@@ -34,6 +34,7 @@ class SetRequest:
 class SetResponse:
   added: bool = False
   updated: bool = False
+  old_value: bytes = b""
   message: str = ""
 
   def update_ok(self):
@@ -124,6 +125,7 @@ class BTree:
           res.set_fail("Key already exists")
           return node
         res.update_ok()
+        res.old_value = node.values[idx]
         return self._update_leaf(node, idx, req)
       if req.mode == SetMode.UPDATE_ONLY:
         res.set_fail("Key not found")

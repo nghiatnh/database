@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 from dataclasses import dataclass
 
 from database.db.value import Value
@@ -15,6 +15,13 @@ class Record:
         return v
     raise KeyError(key)
 
+  def __setitem__(self, key: str, value: Value):
+    for i, v in enumerate(self.values):
+      if v.name == key:
+        self.values[i] = value
+        return
+    raise KeyError(key)
+
   def __contains__(self, key: str) -> bool:
     for v in self.values:
       if v.name == key:
@@ -29,10 +36,49 @@ class Record:
     self.values.append(Value.from_integer(integer, name))
     return self
 
+  def select(self, alias: Dict[str, str]):
+    for v in self.values:
+      if v.name in alias:
+        v.name = alias[v.name]
+
 
 @dataclass
 class Table:
   records: List[Record]
+
+  def __repr__(self) -> str:
+    if self.n_records == 0:
+      return "# No record found"
+    res = "‖ " + " ‖ ".join(
+        [self._format_string(x.name) for x in self.records[0].values]
+    ) + "‖"
+    line1 = "\n" + "-" * len(res) + "\n"
+    line2 = "\n" + "=" * len(res) + "\n"
+    rec_str = "record" if self.n_records == 1 else "records"
+    res = f"# {self.n_records} {rec_str} found" + line2 + res + line2
+    for rec in self.records:
+      res += "| " + " | ".join(
+          [self._format_string(str(x.value)) for x in rec.values]
+      ) + "|"
+      res += line1
+    return res
+
+  def __str__(self) -> str:
+    return self.__repr__()
+
+  def _format_string(self, string: str) -> str:
+    max_len = 10
+    if len(string) < max_len:
+      return string + " " * (max_len - len(string))
+    return string[:max_len - 3] + "..."
+
+  # ========================================================================= #
+  # Public API                                                                #
+  # ========================================================================= #
+
+  @property
+  def n_records(self) -> int:
+    return len(self.records)
 
 
 @dataclass

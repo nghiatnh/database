@@ -115,6 +115,18 @@ class DBTX:
     res = self.kv.set(SetRequest(key_bytes, value_bytes, mode))
     if not res.updated:
       raise ValueError(res.message)
+    if not res.added:
+      rec = Record([])
+      for column, column_type in zip(tdef.columns, tdef.column_types):
+        if column == tdef.primary_index.column:
+          continue
+        if column_type == ValueType.TEXT:
+          rec.add_text(column, "")
+        else:
+          rec.add_integer(column, 0)
+      rec = Record(str_utils.decode_values(res.old_value, rec.values))
+      rec.values.append(record[tdef.primary_index.column])
+      self._index_op(IndexOp.DELETE, tdef, rec)
     self._index_op(IndexOp.SET, tdef, record)
     return res.added
 
@@ -187,6 +199,12 @@ class DBTX:
         ]),
         SetMode.INSERT_ONLY,
     )
+
+  def drop_table(self, table_name: str) -> None:
+    tdef = self.get_table_def(table_name)
+    if tdef is None:
+      raise ValueError(f"Table {table_name} does not exist")
+    self._delete(TDEF_TABLES, Value.from_text(table_name, "name"))
 
   def set(self, table_name: str, record: Record, mode: SetMode) -> bool:
     tdef = self.get_table_def(table_name)
