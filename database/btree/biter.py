@@ -11,11 +11,22 @@ from database.constants import COMPARE_FN
 
 @dataclass
 class PathData:
+  """
+  PathData
+  ========
+  PathData class represents a node in the path from the root to the leaf node.
+  """
   node: BNode
   pos: int
 
 
 class BIter:
+  """
+  BIter
+  =====
+  BIter class represents an iterator for the BTree.
+  """
+
   def __init__(self, tree: BTree) -> None:
     self.tree = tree
     self.path: List[PathData] = []
@@ -79,10 +90,16 @@ class BIter:
 
   @property
   def is_valid(self) -> bool:
+    """
+    Check if the length of the path is greater than 0 and the iterator is valid.
+    """
     return len(self.path) > 0 and self._is_valid
 
   @staticmethod
   def seek(tree: BTree, key: bytes, op: CompareOP) -> "BIter":
+    """
+    Seek the iterator to the given key based on the comparison operator.
+    """
     it = BIter._seek_le(tree, key)
     if it.is_valid and not COMPARE_FN[op](it.deref()[0], key):
       if op in [CompareOP.GE, CompareOP.GT]:
@@ -92,13 +109,22 @@ class BIter:
     return it
 
   def deref(self) -> Tuple[bytes, bytes]:
+    """
+    Get the key and value of the current leaf node.
+    """
     assert self.is_valid
     cur_node = self.path[-1].node
     assert isinstance(cur_node, LeafNode)
     return cur_node.keys[self.path[-1].pos], cur_node.values[self.path[-1].pos]
 
   def move_prev(self):
+    """
+    Move the iterator to the previous leaf node.
+    """
     self._move_prev(len(self.path) - 1)
 
   def move_next(self):
+    """
+    Move the iterator to the next leaf node.
+    """
     self._move_next(len(self.path) - 1)

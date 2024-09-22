@@ -21,31 +21,56 @@ class MergeDirection(Enum):
 
 @dataclass
 class SetRequest:
+  """
+  SetRequest
+  ==========
+  SetRequest class represents a request to set a key-value pair in the BTree.
+  """
+
   key: bytes
   value: bytes
   mode: SetMode = SetMode.UPSERT
 
   def check(self):
+    """
+    Check the validity of the request.
+    """
     assert 0 < len(self.key) <= MAX_KEY_SZ
     assert len(self.value) <= MAX_VALUE_SZ
 
 
 @dataclass
 class SetResponse:
+  """
+  SetResponse
+  ===========
+  SetResponse class represents a response to a set request. It contains
+  information about the success or failure of the request.
+  """
+
   added: bool = False
   updated: bool = False
   old_value: bytes = b""
   message: str = ""
 
   def update_ok(self):
+    """
+    Set the response to indicate that the update was successful.
+    """
     self.added = False
     self.updated = True
 
   def add_ok(self):
+    """
+    Set the response to indicate that the addition was successful
+    """
     self.added = True
     self.updated = True
 
   def set_fail(self, msg: str = ""):
+    """
+    Set the response to indicate that the set operation failed.
+    """
     self.added = False
     self.updated = False
     self.message = msg
@@ -53,26 +78,55 @@ class SetResponse:
 
 @dataclass
 class DeleteRequest:
+  """
+  DeleteRequest
+  =============
+  DeleteRequest class represents a request to delete a key from the BTree.
+  """
+
   key: bytes
 
   def check(self):
+    """
+    Check the validity of the request.
+    """
     assert 0 < len(self.key) <= MAX_KEY_SZ
 
 
 @dataclass
 class DeleteResponse:
+  """
+  DeleteResponse
+  ==============
+  DeleteResponse class represents a response to a delete request. It contains
+  information about the success or failure of the request.
+  """
+
   deleted: bool = False
   message: str = ""
 
   def delete_ok(self):
+    """
+    Set the response to indicate that the deletion was successful.
+    """
     self.deleted = True
 
   def delete_fail(self, msg: str = ""):
+    """
+    Set the response to indicate that the deletion failed.
+    """
     self.deleted = False
     self.message = msg
 
 
 class BTree:
+  """
+  BTree
+  =====
+  BTree class represents a BTree data structure. It provides methods to set,
+  get, and delete key-value pairs in the BTree.
+  """
+
   def __init__(
       self,
       *,
@@ -329,6 +383,9 @@ class BTree:
   # ========================================================================= #
 
   def set(self, req: SetRequest) -> SetResponse:
+    """
+    Set a key-value pair in the BTree.
+    """
     req.check()
     res = SetResponse()
     if self.root == 0:
@@ -356,6 +413,9 @@ class BTree:
     return res
 
   def delete(self, req: DeleteRequest) -> DeleteResponse:
+    """
+    Delete a key-value pair from the BTree.
+    """
     req.check()
     res = DeleteResponse()
     if self.root == 0:
@@ -373,6 +433,9 @@ class BTree:
     return res
 
   def get(self, key: bytes) -> Optional[bytes]:
+    """
+    Get the value associated with a key.
+    """
     assert 0 < len(key) <= MAX_KEY_SZ
     if self.root == 0:
       return None
@@ -380,9 +443,15 @@ class BTree:
     return self._lookup(root, key)
 
   def get_node_by_id(self, idx: int) -> BNode:
+    """
+    Get a node by its index.
+    """
     return self._get(idx)
 
   def render(self, filename="btree.gv") -> None:
+    """
+    Render the BTree to a file.
+    """
     dot = graphviz.Digraph()
     root = self._get(self.root)
     self._add_node(root, self.root, dot)

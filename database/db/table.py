@@ -7,6 +7,12 @@ from database.constants import ValueType
 
 @dataclass
 class Record:
+  """
+  Record
+  ======
+  Record class represents a row in a table.
+  """
+
   values: List[Value]
 
   def __getitem__(self, key: str) -> Value:
@@ -29,21 +35,37 @@ class Record:
     return False
 
   def add_text(self, name: str, text: str) -> "Record":
+    """
+    Add a text value to the record.
+    """
     self.values.append(Value.from_text(text, name))
     return self
 
   def add_integer(self, name: str, integer: int) -> "Record":
+    """
+    Add an integer value to the record.
+    """
     self.values.append(Value.from_integer(integer, name))
     return self
 
-  def select(self, alias: Dict[str, str]):
+  def select(self, alias: Dict[str, str]) -> "Record":
+    """
+    Select the values with the given alias.
+    """
     for v in self.values:
       if v.name in alias:
         v.name = alias[v.name]
+    return self
 
 
 @dataclass
 class Table:
+  """
+  Table
+  =====
+  Table class represents a table in the database.
+  """
+
   records: List[Record]
 
   def __repr__(self) -> str:
@@ -78,20 +100,39 @@ class Table:
 
   @property
   def n_records(self) -> int:
+    """
+    The number of records in the table.
+    """
     return len(self.records)
 
   def dump(self) -> list:
+    """
+    Dump the table as a list of dictionaries.
+    """
     return [{x.name: x.value for x in rec.values} for rec in self.records]
 
 
 @dataclass
 class Index:
+  """
+  Index
+  =====
+  Index class represents an index in the table. It contains the column name and
+  the prefix.
+  """
   column: str
   prefix: int = 0
 
 
 @dataclass
 class TableDef:
+  """
+  TableDef
+  ========
+  TableDef class represents the definition of a table. It contains the table
+  name, columns, column types, primary index, and indexes.
+  """
+
   name: str
   columns: List[str]
   column_types: List[ValueType]
@@ -114,6 +155,9 @@ class TableDef:
 
   @staticmethod
   def from_dict(data: dict) -> "TableDef":
+    """
+    Create a TableDef from a dictionary.
+    """
     return TableDef(
         data["name"],
         data["columns"],
@@ -123,6 +167,9 @@ class TableDef:
     )
 
   def validate(self):
+    """
+    Validate the table definition.
+    """
     if len(self.columns) != len(self.column_types):
       raise ValueError(
           "columns and column_types must have the same length"
@@ -141,6 +188,9 @@ class TableDef:
         raise ValueError(f"{index.column} not found in columns")
 
   def validate_record(self, record: Record) -> Record:
+    """
+    Validate the record against the table definition.
+    """
     for v in record.values:
       if v.name not in self.columns:
         raise ValueError(f"{v.name} not found in columns")
@@ -154,12 +204,18 @@ class TableDef:
     return new_rec
 
   def get_column_type(self, column: str) -> ValueType:
+    """
+    Get the type of the column by name.
+    """
     for c, t in zip(self.columns, self.column_types):
       if c == column:
         return t
     raise ValueError(f"{column} not found in columns")
 
   def find_index(self, column: str) -> Index:
+    """
+    Find the index by column name.
+    """
     if column not in self.columns:
       raise ValueError(f"{column} not found in columns")
     for index in [self.primary_index, *self.indexes]:
@@ -175,6 +231,9 @@ TDEF_META = TableDef(
     Index("key", 1),
     [],
 )
+"""
+Meta table definition.
+"""
 
 TDEF_TABLES = TableDef(
     "@tables",
@@ -183,3 +242,6 @@ TDEF_TABLES = TableDef(
     Index("name", 2),
     [],
 )
+"""
+Tables table definition.
+"""

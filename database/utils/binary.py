@@ -6,34 +6,58 @@ LITTLE = "little"
 # Int to bytes
 
 def bytes1(value: int, *, order: Literal["little", "big"] = LITTLE) -> bytes:
+  """
+  Convert an integer to a byte.
+  """
   return value.to_bytes(1, byteorder=order)
 
 
 def bytes2(value: int, *, order: Literal["little", "big"] = LITTLE) -> bytes:
+  """
+  Convert an integer to two bytes.
+  """
   return value.to_bytes(2, byteorder=order)
 
 
 def bytes4(value: int, *, order: Literal["little", "big"] = LITTLE) -> bytes:
+  """
+  Convert an integer to four bytes.
+  """
   return value.to_bytes(4, byteorder=order)
 
 
 def bytes8(value: int, *, order: Literal["little", "big"] = LITTLE) -> bytes:
+  """
+  Convert an integer to eight bytes.
+  """
   return value.to_bytes(8, byteorder=order)
 
 
 # Bytes to int
 
 def int8(value: bytes, *, order: Literal["little", "big"] = LITTLE) -> int:
+  """
+  Convert a byte to an integer.
+  """
   return int.from_bytes(value[:1], byteorder=order)
 
 
 def int16(value: bytes, *, order: Literal["little", "big"] = LITTLE) -> int:
+  """
+  Convert two bytes to an integer.
+  """
   return int.from_bytes(value[:2], byteorder=order)
 
 
 def int32(value: bytes, *, order: Literal["little", "big"] = LITTLE) -> int:
+  """
+  Convert four bytes to an integer.
+  """
   return int.from_bytes(value[:4], byteorder=order)
 
 
 def int64(value: bytes, *, order: Literal["little", "big"] = LITTLE) -> int:
+  """
+  Convert eight bytes to an integer.
+  """
   return int.from_bytes(value[:8], byteorder=order)

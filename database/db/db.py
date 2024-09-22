@@ -22,37 +22,76 @@ from database.constants import TDEF_MIN_PREFIX
 
 
 class IndexOp(Enum):
+  """
+  IndexOp
+  =======
+  IndexOp class represents the index operation.
+  """
+
   SET = 1
   DELETE = 2
 
 
 class Database:
+  """
+  Database
+  ========
+  Database class represents the database manager.
+  """
+
   def __init__(self, path: Path) -> None:
     self.kv = KVStore(path)
 
   def open(self) -> None:
+    """
+    Open the database.
+    """
     self.kv.open()
 
   def close(self) -> None:
+    """
+    Close the database.
+    """
     self.kv.close()
 
   def begin_read(self, tx: "DBTX") -> None:
+    """
+    Begin a read-only transaction.
+    """
     self.kv.begin_read(tx.kv)
 
   def end_read(self, tx: "DBTX") -> None:
+    """
+    End a read-only transaction.
+    """
     self.kv.end_read(tx.kv)
 
   def begin(self, tx: "DBTX"):
+    """
+    Begin a read-write transaction.
+    """
     self.kv.begin(tx.kv)
 
   def commit(self, tx: "DBTX"):
+    """
+    Commit a read-write transaction.
+    """
     self.kv.commit(tx.kv)
 
   def rollback(self, tx: "DBTX"):
+    """
+    Rollback a read-write transaction.
+    """
     self.kv.rollback(tx.kv)
 
 
 class DBTX:
+  """
+  DBTX
+  ====
+  DBTX class represents a database transaction.
+  """
+
   def __init__(self) -> None:
     self.kv = KVTX()
 
@@ -176,12 +215,18 @@ class DBTX:
   # ========================================================================= #
 
   def get_table_def(self, table_name: str) -> TableDef:
+    """
+    Get the table definition by name.
+    """
     rec = self._get(TDEF_TABLES, Value.from_text(table_name, "name"))
     if rec is None:
       return None
     return TableDef.from_dict(json.loads(rec["def"].text))
 
   def create_table(self, tdef: TableDef) -> None:
+    """
+    Create a table with the given table definition.
+    """
     tdef.validate()
     if self.get_table_def(tdef.name) is not None:
       raise ValueError(f"Table {tdef.name} already exists")
@@ -201,24 +246,39 @@ class DBTX:
     )
 
   def drop_table(self, table_name: str) -> None:
+    """
+    Drop the table by name.
+    """
     tdef = self.get_table_def(table_name)
     if tdef is None:
       raise ValueError(f"Table {table_name} does not exist")
     self._delete(TDEF_TABLES, Value.from_text(table_name, "name"))
 
   def set(self, table_name: str, record: Record, mode: SetMode) -> bool:
+    """
+    Set the record in the table with the given mode.
+    """
     tdef = self.get_table_def(table_name)
     if tdef is None:
       raise ValueError(f"Table {table_name} does not exist")
     return self._set(tdef, record, mode)
 
   def insert(self, table_name: str, record: Record) -> None:
+    """
+    Insert the record in the table.
+    """
     self.set(table_name, record, SetMode.INSERT_ONLY)
 
   def update(self, table_name: str, record: Record) -> None:
+    """
+    Update the record in the table.
+    """
     self.set(table_name, record, SetMode.UPDATE_ONLY)
 
   def delete(self, table_name: str, key: Value) -> None:
+    """
+    Delete the record from the table by key.
+    """
     tdef = self.get_table_def(table_name)
     if tdef is None:
       raise ValueError(f"Table {table_name} does not exist")
@@ -232,6 +292,10 @@ class DBTX:
       cmp1: CompareOP,
       cmp2: CompareOP,
   ) -> Generator[Record, None, None]:
+    """
+    Scan the table with the given range and comparison operators. Return a
+    generator of records.
+    """
     tdef = self.get_table_def(table_name)
     if tdef is None:
       raise ValueError(f"Table {table_name} does not exist")

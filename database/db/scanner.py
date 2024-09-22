@@ -12,6 +12,12 @@ from database.constants import COMPARE_FN
 
 @dataclass
 class Scanner:
+  """
+  Scanner
+  =======
+  Scanner class represents a scanner for the database.
+  """
+
   key1: bytes
   key2: bytes
   cmp1: CompareOP
@@ -20,6 +26,9 @@ class Scanner:
 
   @property
   def is_valid(self) -> bool:
+    """
+    Check if the scanner is valid to dereference.
+    """
     if not self.it.is_valid:
       return False
     key, _ = self.it.deref()
@@ -35,6 +44,9 @@ class Scanner:
       nkeys: int,
       rec: Record,
   ) -> Record:
+    """
+    Dereference the scanner to get the record.
+    """
     key_bytes, value_bytes = self.it.deref()
     keys = str_utils.decode_values(
         key_bytes[8:],
@@ -54,6 +66,9 @@ class Scanner:
     return rec
 
   def next(self) -> None:
+    """
+    Move the scanner to the next record.
+    """
     if self.cmp1 in [CompareOP.GE, CompareOP.GT]:
       self.it.move_next()
     else:

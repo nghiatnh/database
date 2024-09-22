@@ -7,13 +7,26 @@ from database.constants import NodeType
 
 @dataclass
 class NodeData:
+  """
+  NodeData
+  ========
+  NodeData is a dataclass that represents the data stored in a node of
+  the queue.
+  """
+
   version: int
   value: int
 
 
 @dataclass
-class StackNode:
-  # Stack node structure:
+class QueueNode:
+  """
+  QueueNode
+  =========
+  QueueNode is a dataclass that represents a node in the queue.
+  """
+
+  # Queue node structure:
   # | Type | Next | N Children | Version-Children Pair... |
   # | 2b   | 8b   | 4b         | 16b * N                  |
 
@@ -29,13 +42,22 @@ class StackNode:
 
   @property
   def n_bytes(self) -> int:
+    """
+    The number of bytes required to store the node in the database.
+    """
     return 2 + 8 + 4 + 16 * self.n_children
 
   @property
   def n_children(self) -> int:
+    """
+    Number of children in the node.
+    """
     return len(self.children)
 
   def serialize(self) -> bytes:
+    """
+    Serialize the node to bytes.
+    """
     data = (
         binary.bytes2(self.type.value) +
         binary.bytes8(self.next_node) +
@@ -46,7 +68,10 @@ class StackNode:
     return data
 
   @staticmethod
-  def deserialize(data: bytes) -> "StackNode":
+  def deserialize(data: bytes) -> "QueueNode":
+    """
+    Deserialize the node from bytes.
+    """
     node_type = NodeType(binary.int16(data[:2]))
     assert node_type == NodeType.FREE
     next_node = binary.int64(data[2:10])
@@ -63,4 +88,4 @@ class StackNode:
       )
       data = data[16:]
 
-    return StackNode(node_type, next_node, children)
+    return QueueNode(node_type, next_node, children)

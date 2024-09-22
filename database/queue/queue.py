@@ -1,18 +1,25 @@
 from typing import Callable, List
 import graphviz
 
-from database.stack.stack_node import NodeData
-from database.stack.stack_node import StackNode
+from database.queue.queue_node import NodeData
+from database.queue.queue_node import QueueNode
 from database.constants import STACK_CAP
 
 
-class Stack:
+class Queue:
+  """
+  Queue
+  =====
+  Queue class is a simple implementation of a queue data structure that
+  supports versioning and garbage collection.
+  """
+
   def __init__(
       self,
       *,
-      new_: Callable[[StackNode], int] = None,
-      get_: Callable[[int], StackNode] = None,
-      use_: Callable[[int, StackNode], None] = None,
+      new_: Callable[[QueueNode], int] = None,
+      get_: Callable[[int], QueueNode] = None,
+      use_: Callable[[int, QueueNode], None] = None,
   ) -> None:
     self.top = 0
     self.version = 0
@@ -32,7 +39,7 @@ class Stack:
     self.top = 0
     while len(nodes) > 0:
       size = min(len(nodes), STACK_CAP)
-      node = StackNode(next_node=self.top, children=nodes[:size])
+      node = QueueNode(next_node=self.top, children=nodes[:size])
       nodes = nodes[size:]
       if len(reuse) > 0:
         self.top = reuse[0]
@@ -48,11 +55,17 @@ class Stack:
 
   @property
   def total_length(self) -> int:
+    """
+    The total length of the queue.
+    """
     if self.top == 0:
       return 0
     return len(self.nodes)
 
   def load(self, top: int, version: int, min_version: int) -> None:
+    """
+    Load the queue from top node with the given version and min_version.
+    """
     self.top = top
     self.version = version
     self.min_version = min_version
@@ -64,6 +77,10 @@ class Stack:
       top = node.next_node
 
   def pop(self) -> int:
+    """
+    Pop the top node from the queue that is older than the min_version of the
+    queue. Return 0 if no such node exists.
+    """
     if self.top == 0 or self.offset >= self.total_length:
       return 0
     node = self.nodes[self.offset]
@@ -73,6 +90,10 @@ class Stack:
     return 0
 
   def save(self, freed: List[int]):
+    """
+    Append the freed nodes to the queue, reusing the freed nodes if possible and
+    saving the rest as new nodes.
+    """
     if len(freed) == 0:
       return
     freed.append(self.top)
@@ -98,6 +119,9 @@ class Stack:
     self.nodes = nodes
 
   def render(self, filename="stack.gv") -> None:
+    """
+    Render the queue to a file.
+    """
     dot = graphviz.Digraph()
     top = self._get(self.top)
     last = -1

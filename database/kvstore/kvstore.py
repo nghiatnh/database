@@ -14,8 +14,8 @@ from database.btree import SetRequest
 from database.btree import SetResponse
 from database.btree import DeleteRequest
 from database.btree import DeleteResponse
-from database.stack import StackNode
-from database.stack import Stack
+from database.queue import QueueNode
+from database.queue import Queue
 from database.kvstore.master_page import MasterPage
 from database.kvstore.io import FileHandler
 from database.utils import binary
@@ -24,7 +24,7 @@ from database.constants import MASTER_SIG
 from database.constants import PAGE_SIZE
 
 
-Node = Union[BNode, StackNode]
+Node = Union[BNode, QueueNode]
 
 
 def node_factory(data: bytes) -> Node:
@@ -33,15 +33,25 @@ def node_factory(data: bytes) -> Node:
     return LeafNode.deserialize(data)
   if node_type == NodeType.INTERNAL:
     return InternalNode.deserialize(data)
-  return StackNode.deserialize(data)
+  return QueueNode.deserialize(data)
 
 
 class TransactionError(Exception):
-  pass
+  """
+  TransactionError
+  ================
+  TransactionError class represents an error in the transaction.
+  """
 
 
 @dataclass
 class KVData:
+  """
+  KVData
+  ======
+  KVData class represents the data of the KVStore.
+  """
+
   root: int
   top: int
   flushed: int
@@ -49,6 +59,9 @@ class KVData:
   readers: List[int]
 
   def to_dict(self) -> dict:
+    """
+    Convert the KVData to a dictionary.
+    """
     return {
         "root": self.root,
         "top": self.top,
@@ -59,6 +72,9 @@ class KVData:
 
   @staticmethod
   def from_dict(data: dict) -> "KVData":
+    """
+    Create a KVData from a dictionary.
+    """
     return KVData(
         root=data["root"],
         top=data["top"],
@@ -69,6 +85,12 @@ class KVData:
 
 
 class KVStore:
+  """
+  KVStore
+  =======
+  KVStore class represents the key-value store manager.
+  """
+
   def __init__(self, path: Path) -> None:
     self.data_file = "kvtx_data.json"
     self.lock = filelock.FileLock("process.lock")
@@ -120,6 +142,9 @@ class KVStore:
 
   @property
   def master_page(self) -> MasterPage:
+    """
+    The master page of the KVStore.
+    """
     data = self._read_data()
     return MasterPage(
         sig=MASTER_SIG,
@@ -130,6 +155,9 @@ class KVStore:
     )
 
   def begin_read(self, tx: "KVTX") -> None:
+    """
+    Begin a read-only transaction.
+    """
     tx.file = FileHandler(self._path)
     tx.file.open("r+b")
     with self.lock:
@@ -143,6 +171,9 @@ class KVStore:
       tx.in_tx = True
 
   def end_read(self, tx: "KVTX") -> None:
+    """
+    End a read-only transaction.
+    """
     with self.lock:
       data = self._read_data()
       data.readers.remove(tx.version)
@@ -151,6 +182,9 @@ class KVStore:
     tx.file.close()
 
   def begin(self, tx: "KVTX") -> None:
+    """
+    Begin a read-write transaction.
+    """
     self.writer.acquire()
     tx.file = FileHandler(self._path)
     tx.file.open("r+b")
@@ -169,6 +203,9 @@ class KVStore:
       tx.stack.load(tx.stack.top, tx.version, minversion)
 
   def commit(self, tx: "KVTX") -> None:
+    """
+    Commit the read-write transaction.
+    """
     tx.flush()
     with self.lock:
       data = self._read_data()
@@ -183,6 +220,9 @@ class KVStore:
     tx.file.close()
 
   def rollback(self, tx: "KVTX") -> None:
+    """
+    Rollback the read-write transaction.
+    """
     with self.lock:
       data = self._read_data()
       tx.tree.root = data.root
@@ -194,6 +234,9 @@ class KVStore:
     tx.file.close()
 
   def open(self) -> None:
+    """
+    Open or create the file for the KVStore.
+    """
     try:
       if os.path.exists(self._file.path):
         self._file.open("r+b")
@@ -205,15 +248,25 @@ class KVStore:
       raise e
 
   def close(self) -> None:
+    """
+    Close the file for the KVStore.
+    """
     self._file.close()
 
 
 class KVTX:
+  """
+  KVTX
+  ====
+  KVTX class represents the transaction for the KVStore. It contains the
+  methods to interact with the KVStore.
+  """
+
   def __init__(self) -> None:
     self.tree = BTree(
         get_=self._page_get, new_=self._page_new, del_=self._page_del
     )
-    self.stack = Stack(
+    self.stack = Queue(
         new_=self._page_new, get_=self._page_get, use_=self._page_use
     )
     self.file: FileHandler = None
@@ -224,22 +277,12 @@ class KVTX:
     self._n_free = 0
     self._updated: Dict[int, Node] = {}
 
-  @property
-  def master_page(self) -> MasterPage:
-    return MasterPage(
-        sig=MASTER_SIG,
-        version=self.version,
-        flushed=self.flushed,
-        root=self.tree.root,
-        top=self.stack.top,
-    )
-
   # ========================================================================= #
   # Internal API                                                              #
   # ========================================================================= #
 
   # ------------------------------------------------------------------------- #
-  # Callbacks for BTree and Stack                                             #
+  # Callbacks for BTree and Queue                                             #
   # ------------------------------------------------------------------------- #
 
   def _page_new(self, node: Node) -> int:
@@ -264,15 +307,31 @@ class KVTX:
   def _page_del(self, page_id: int) -> None:
     self._updated[page_id] = None
 
-  # ------------------------------------------------------------------------- #
-  # Flushing                                                                  #
-  # ------------------------------------------------------------------------- #
-
   def _extend_file(self, n_pages: int) -> None:
     if self.file.size < n_pages * PAGE_SIZE:
       self.file.extend(n_pages * PAGE_SIZE)
 
+  # ========================================================================= #
+  # Public API                                                                #
+  # ========================================================================= #
+
+  @property
+  def master_page(self) -> MasterPage:
+    """
+    The master page of the KVStore.
+    """
+    return MasterPage(
+        sig=MASTER_SIG,
+        version=self.version,
+        flushed=self.flushed,
+        root=self.tree.root,
+        top=self.stack.top,
+    )
+
   def flush(self) -> None:
+    """
+    Flush the transaction to the file.
+    """
     self.stack.save(
         [page_id for page_id, x in self._updated.items() if x is None]
     )
@@ -289,22 +348,27 @@ class KVTX:
     self._updated.clear()
     self.file.flush()
 
-  # ========================================================================= #
-  # Public API                                                                #
-  # ========================================================================= #
-
   def get(self, key: bytes) -> Optional[bytes]:
+    """
+    Get the value for the given key. Requires a transaction be started.
+    """
     if not self.in_tx:
       raise TransactionError("Transaction not started")
     return self.tree.get(key)
 
   def set(self, req: SetRequest) -> SetResponse:
+    """
+    Set the key-value pair in the KVStore. Requires a transaction be started.
+    """
     if not self.in_tx:
       raise TransactionError("Transaction not started")
     res = self.tree.set(req)
     return res
 
   def delete(self, req: DeleteRequest) -> DeleteResponse:
+    """
+    Delete the key-value pair in the KVStore. Requires a transaction be started.
+    """
     if not self.in_tx:
       raise TransactionError("Transaction not started")
     res = self.tree.delete(req)

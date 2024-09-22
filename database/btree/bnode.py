@@ -7,6 +7,12 @@ from database.constants import NodeType
 
 @dataclass
 class BNode:
+  """
+  BNode
+  =====
+  BNode class represents a node in the BTree.
+  """
+
   type: NodeType = NodeType.NULL
   keys: List[bytes] = None
 
@@ -19,20 +25,32 @@ class BNode:
 
   @property
   def n_bytes(self) -> int:
-    pass
+    """
+    The number of bytes required to store the node in the database.
+    """
 
   @property
   def n_keys(self) -> int:
+    """
+    Number of keys in the node.
+    """
     return len(self.keys)
 
   def serialize(self) -> bytes:
-    pass
+    """
+    Serialize the node to bytes.
+    """
 
   @staticmethod
   def deserialize(data: bytes) -> "BNode":
-    pass
+    """
+    Deserialize the node from bytes.
+    """
 
   def lookup_le(self, key: bytes) -> int:
+    """
+    Find the index of the key that is less than or equal to the given key.
+    """
     found = 0
     for i, k in enumerate(self.keys):
       if key >= k:
@@ -42,6 +60,12 @@ class BNode:
 
 @dataclass
 class LeafNode(BNode):
+  """
+  LeafNode
+  ========
+  LeafNode class represents a leaf node in the BTree.
+  """
+
   # Leaf node structure:
   # | NodeType | N Keys | Key-Value Pair... |
   # | 2b       | 4b     | ...               |
@@ -96,6 +120,12 @@ class LeafNode(BNode):
 
 @dataclass
 class InternalNode(BNode):
+  """
+  InternalNode
+  ============
+  InternalNode class represents an internal node in the BTree.
+  """
+
   # Internal node structure:
   # | NodeType | N Keys | Children... | Keys... |
   # | 2b       | 4b     | 8b * N Keys | ...     |

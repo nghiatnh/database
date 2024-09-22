@@ -229,7 +229,8 @@ class QLExecutor:
 
   def execute(self, query: str) -> Optional[Table]:
     """
-    Executes a query.
+    Executes a query. It begins a read transaction if the query is read-only
+    and a read-write transaction otherwise.
     """
     lexer = Lexer(query)
     parser = Parser(lexer)

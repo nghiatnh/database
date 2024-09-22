@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from database.db import DBTX
 from database.db import Database
 from database.ql import QLExecutor
 

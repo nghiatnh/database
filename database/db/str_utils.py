@@ -10,6 +10,9 @@ def _escape_text(text: bytes) -> bytes:
 
 
 def encode_values(values: List[Value]) -> bytes:
+  """
+  Encode the values to bytes.
+  """
   res = b""
   for v in values:
     if v.type == ValueType.TEXT:
@@ -20,10 +23,16 @@ def encode_values(values: List[Value]) -> bytes:
 
 
 def encode_keys(prefix: int, keys: List[Value]) -> bytes:
+  """
+  Encode the keys to bytes.
+  """
   return binary.bytes8(prefix) + encode_values(keys)
 
 
 def decode_values(data: bytes, out: List[Value]) -> List[Value]:
+  """
+  Decode the values from bytes.
+  """
   for v in out:
     if v.type == ValueType.TEXT:
       end = data.find(b"\0")

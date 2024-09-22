@@ -117,10 +117,6 @@ class IndexOp(Enum):
 # Constants                                                                   #
 # =========================================================================== #
 
-# =========================================================================== #
-# Token groups                                                                #
-# =========================================================================== #
-
 PUNCTUATIONS = {
     TokenType.LEFT_PAREN.value: TokenType.LEFT_PAREN,
     TokenType.RIGHT_PAREN.value: TokenType.RIGHT_PAREN,
