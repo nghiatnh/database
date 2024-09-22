@@ -125,10 +125,14 @@ class QLExecutor:
         self._to_compare_op(ir_node.key2.op),
     )
     table = Table([])
+    offset = 0
     while ir_node.limit < 0 or table.n_records < ir_node.limit:
       try:
         rec = next(it)
-        if self._eval(ir_node.filter, rec):
+        if not self._eval(ir_node.filter, rec):
+          continue
+        if offset < ir_node.offset:
+          offset += 1
           continue
         table.records.append(rec)
       except StopIteration:
@@ -192,7 +196,7 @@ class QLExecutor:
 
   def _eval(self, node: Union[Comparison, ComparisonTree], rec: Record) -> bool:
     if node is None:
-      return False
+      return True
     if node.op == TokenType.AND:
       return self._eval(
           node.children[0],
