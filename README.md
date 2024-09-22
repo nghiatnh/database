@@ -31,6 +31,30 @@ print(recs)
 ----------------------------------------------------
 ```
 
+To start the server for concurrent querying, run the following command:
+
+```bash
+python3 -m database.server
+```
+
+Then, you can send a request to create a table like this:
+```python
+requests.post(
+    "http://localhost:8000/query",
+    json={"query": """
+        CREATE TABLE users (
+            id INTEGER,
+            name TEXT,
+            age INTEGER,
+            height INTEGER,
+            INDEX name,
+            INDEX age,
+            PRIMARY KEY id
+        );"""
+    }
+)
+```
+
 ## Features
 
 - Basic CRUD operations.
