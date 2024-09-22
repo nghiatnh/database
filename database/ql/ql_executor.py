@@ -24,8 +24,16 @@ from database.ql.constants import TokenType
 from database.ql.constants import IndexOp
 from database.constants import CompareOP
 from database.constants import ValueType
-from database.constants import COMPARE_FN
 from database.utils import binary
+
+
+COMPARE_FN = {
+    TokenType.EQ.value: lambda x, y: x == y,
+    TokenType.GT.value: lambda x, y: x > y,
+    TokenType.GE.value: lambda x, y: x >= y,
+    TokenType.LT.value: lambda x, y: x < y,
+    TokenType.LE.value: lambda x, y: x <= y,
+}
 
 
 class QLExecutor:
@@ -197,7 +205,7 @@ class QLExecutor:
           rec) or self._eval(
           node.children[1],
           rec)
-    return COMPARE_FN[node.op.value](rec[node.field], node.value)
+    return COMPARE_FN[node.op.value](rec[node.field].value, node.value)
 
   def _execute_read_only(self, nodes: List[IRNode]) -> Optional[Table]:
     res = []
