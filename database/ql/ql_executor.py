@@ -129,6 +129,10 @@ class QLExecutor:
     return table
 
   def _execute_select(self, ir_node: IRSelect, tx: DBTX) -> Table:
+    tdef = tx.get_table_def(ir_node.table)
+    for key in ir_node.aliases:
+      if key not in tdef.columns:
+        raise ValueError(f"Invalid alias: {key}")
     table = self._execute_scan(ir_node, tx)
     for rec in table.records:
       rec.select(ir_node.aliases)

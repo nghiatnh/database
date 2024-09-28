@@ -17,7 +17,10 @@ db.open()
 
 @app.post("/query")
 def _query(req: QueryRequest):
-  res = QLExecutor(db).execute(req.query)
+  try:
+    res = QLExecutor(db).execute(req.query)
+  except Exception as e:
+    return {"error": str(e)}
   if res is None:
-    return "Done"
+    return []
   return res.dump()
