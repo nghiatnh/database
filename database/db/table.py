@@ -53,10 +53,10 @@ class Record:
     Select the values with the given alias.
     """
     new_values = []
-    for v in self.values:
-      if v.name in alias:
-        v.name = alias[v.name]
-        new_values.append(v)
+    for key in alias:
+      value = self[key]
+      value.name = alias[key]
+      new_values.append(value)
     self.values = new_values
     return self
 

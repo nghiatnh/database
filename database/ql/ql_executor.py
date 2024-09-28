@@ -129,10 +129,6 @@ class QLExecutor:
     return table
 
   def _execute_select(self, ir_node: IRSelect, tx: DBTX) -> Table:
-    tdef = tx.get_table_def(ir_node.table)
-    for key in ir_node.aliases:
-      if key not in tdef.columns:
-        raise ValueError(f"Invalid alias: {key}")
     table = self._execute_scan(ir_node, tx)
     for rec in table.records:
       rec.select(ir_node.aliases)
@@ -167,6 +163,8 @@ class QLExecutor:
       tx: DBTX,
   ) -> Generator[Record, None, None]:
     tdef = tx.get_table_def(table)
+    if tdef is None:
+      raise ValueError(f"Table {table} does not exist")
     if key1 is None:
       field = tdef.primary_index.column
       column_type = tdef.column_types[tdef.columns.index(field)]
