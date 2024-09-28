@@ -107,6 +107,7 @@ class ASTNodeType(Enum):
 
 class IndexOp(Enum):
   EQ = "="
+  NEQ = "!="
   LT = "<"
   LE = "<="
   GT = ">"

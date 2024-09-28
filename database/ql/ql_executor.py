@@ -1,4 +1,4 @@
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Generator
 
 from database.db import Index
 from database.db import DBTX
@@ -29,10 +29,30 @@ from database.utils import binary
 
 COMPARE_FN = {
     TokenType.EQ.value: lambda x, y: x == y,
+    TokenType.NEQ.value: lambda x, y: x != y,
     TokenType.GT.value: lambda x, y: x > y,
     TokenType.GE.value: lambda x, y: x >= y,
     TokenType.LT.value: lambda x, y: x < y,
     TokenType.LE.value: lambda x, y: x <= y,
+}
+
+LOGIC_FN = {
+    TokenType.AND.value: lambda x, y: x and y,
+    TokenType.OR.value: lambda x, y: x or y,
+}
+
+INDEX_TO_COMPARE_OP = {
+    IndexOp.LT: CompareOP.LT,
+    IndexOp.LE: CompareOP.LE,
+    IndexOp.GT: CompareOP.GT,
+    IndexOp.GE: CompareOP.GE,
+}
+
+OPPOSITE_OP = {
+    IndexOp.LT: IndexOp.GE,
+    IndexOp.LE: IndexOp.GE,
+    IndexOp.GT: IndexOp.LE,
+    IndexOp.GE: IndexOp.LE,
 }
 
 
@@ -92,38 +112,7 @@ class QLExecutor:
     tx.drop_table(ir_node.table)
 
   def _execute_scan(self, ir_node: IRScan, tx: DBTX) -> Table:
-    tdef = tx.get_table_def(ir_node.table)
-    if ir_node.key1 is None:
-      ir_node.key1 = Comparison(
-          tdef.columns[0],
-          IndexOp.GE,
-          0 if tdef.column_types[0] == ValueType.INTEGER else "",
-      )
-    if ir_node.key2 is None:
-      op = IndexOp.GE if ir_node.key1.op in [
-          IndexOp.LE, IndexOp.LT
-      ] else IndexOp.LE
-      if isinstance(ir_node.key1.value, int):
-        ir_node.key2 = Comparison(
-            ir_node.key1.field,
-            op,
-            0 if ir_node.key1.op == IndexOp.LE
-            else binary.int64(b"\xff" * 8),
-        )
-      else:
-        ir_node.key2 = Comparison(
-            ir_node.key1.field,
-            op,
-            "" if ir_node.key1.op == IndexOp.LE
-            else b"\xff".decode(),
-        )
-    it = tx.scan(
-        ir_node.table,
-        self._to_value(ir_node.key1.value, ir_node.key1.field),
-        self._to_value(ir_node.key2.value, ir_node.key2.field),
-        self._to_compare_op(ir_node.key1.op),
-        self._to_compare_op(ir_node.key2.op),
-    )
+    it = self._get_scanner(ir_node.table, ir_node.key1, ir_node.key2, tx)
     table = Table([])
     offset = 0
     while ir_node.limit < 0 or table.n_records < ir_node.limit:
@@ -166,16 +155,56 @@ class QLExecutor:
       tx.delete(ir_node.table, rec[tdef.primary_index.column])
     return table
 
-  def _to_compare_op(self, op: IndexOp) -> CompareOP:
-    if op == IndexOp.GE:
-      return CompareOP.GE
-    if op == IndexOp.GT:
-      return CompareOP.GT
+  def _get_scanner(
+      self,
+      table: str,
+      key1: Optional[Comparison],
+      key2: Optional[Comparison],
+      tx: DBTX,
+  ) -> Generator[Record, None, None]:
+    tdef = tx.get_table_def(table)
+    if key1 is None:
+      key1 = Comparison(
+          tdef.columns[0],
+          IndexOp.GE,
+          self._parital_value(IndexOp.GE, tdef.column_types[0]),
+      )
+    if key1.op == IndexOp.EQ and key2 is not None:
+      raise ValueError("Invalid query: EQ and key2 is not None")
+    if key2 is None:
+      if key1.op == IndexOp.EQ:
+        key2 = Comparison(
+            key1.field,
+            IndexOp.LE,
+            key1.value,
+        )
+        key1.op = IndexOp.GE
+      else:
+        column_type = tdef.column_types[tdef.columns.index(key1.field)]
+        key2 = Comparison(
+            key1.field,
+            OPPOSITE_OP[key1.op],
+            self._parital_value(key1.op, column_type),
+        )
+    return tx.scan(
+        table,
+        self._to_value(key1.value, key1.field),
+        self._to_value(key2.value, key2.field),
+        INDEX_TO_COMPARE_OP[key1.op],
+        INDEX_TO_COMPARE_OP[key2.op],
+    )
+
+  def _parital_value(
+      self,
+      op: IndexOp,
+      value_type: ValueType,
+  ) -> Union[str, int]:
     if op == IndexOp.LE:
-      return CompareOP.LE
-    if op == IndexOp.LT:
-      return CompareOP.LT
-    raise ValueError(f"Invalid IndexOp: {op}")
+      return "" if value_type == ValueType.TEXT else 0
+    return (
+        b"\xff".decode() if value_type == ValueType.TEXT
+        else binary.int64(b"\xff" * 8)
+    )
 
   def _to_value(self, value: Union[str, int], name: str) -> Value:
     if isinstance(value, str):
@@ -197,18 +226,11 @@ class QLExecutor:
   def _eval(self, node: Union[Comparison, ComparisonTree], rec: Record) -> bool:
     if node is None:
       return True
-    if node.op == TokenType.AND:
-      return self._eval(
-          node.children[0],
-          rec) and self._eval(
-          node.children[1],
-          rec)
-    if node.op == TokenType.OR:
-      return self._eval(
-          node.children[0],
-          rec) or self._eval(
-          node.children[1],
-          rec)
+    if node.op.value in LOGIC_FN:
+      return LOGIC_FN[node.op](
+          self._eval(node.children[0], rec),
+          self._eval(node.children[1], rec)
+      )
     return COMPARE_FN[node.op.value](rec[node.field].value, node.value)
 
   def _execute_read_only(self, nodes: List[IRNode]) -> Optional[Table]:

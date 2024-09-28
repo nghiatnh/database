@@ -3,7 +3,7 @@ import graphviz
 
 from database.queue.queue_node import NodeData
 from database.queue.queue_node import QueueNode
-from database.constants import STACK_CAP
+from database.constants import QUEUE_CAP
 
 
 class Queue:
@@ -38,7 +38,7 @@ class Queue:
   def _save(self, nodes: List[NodeData], reuse: List[int]):
     self.top = 0
     while len(nodes) > 0:
-      size = min(len(nodes), STACK_CAP)
+      size = min(len(nodes), QUEUE_CAP)
       node = QueueNode(next_node=self.top, children=nodes[:size])
       nodes = nodes[size:]
       if len(reuse) > 0:
@@ -102,14 +102,14 @@ class Queue:
       self.offset = offset
       r = 1
       n_groups = (
-          self.total_length - self.offset + len(freed) - 1) // STACK_CAP + 1
+          self.total_length - self.offset + len(freed) - 1) // QUEUE_CAP + 1
       reuse = []
       while r != 0 and len(reuse) < n_groups:
         r = self.pop()
         if r != 0:
           reuse.append(r)
       new_n_groups = (
-          self.total_length - self.offset + len(freed) - 1) // STACK_CAP + 1
+          self.total_length - self.offset + len(freed) - 1) // QUEUE_CAP + 1
       if new_n_groups == n_groups:
         break
     nodes = self.nodes[self.offset:] + [
