@@ -168,10 +168,12 @@ class QLExecutor:
   ) -> Generator[Record, None, None]:
     tdef = tx.get_table_def(table)
     if key1 is None:
+      field = tdef.primary_index.column
+      column_type = tdef.column_types[tdef.columns.index(field)]
       key1 = Comparison(
-          tdef.columns[0],
+          field,
           IndexOp.GE,
-          self._parital_value(IndexOp.GE, tdef.column_types[0]),
+          self._parital_value(IndexOp.LE, column_type),
       )
     if key1.op == IndexOp.EQ and key2 is not None:
       raise ValueError("Invalid query: EQ and key2 is not None")
