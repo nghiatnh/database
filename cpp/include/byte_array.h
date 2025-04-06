@@ -2,6 +2,7 @@
 #define BYTE_ARRAY_H
 
 #include <bitset>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -46,16 +47,14 @@ class ByteArray {
   inline int c_double() const { return get<double>(0); }
 
   template <typename T>
-  inline void set_value(int index, T value) {
+  inline void set_value(size_t index, T value) {
+    assert(index < n);
     cast_data<T>(index)[0] = value;
   }
 
-  inline void set_value(int start, const ByteArray& other) {
-    auto n_cp = other.n;
-    if (other.n + start > n) {
-      n_cp = n - start;
-    }
-    std::memcpy(data + start, other.data, n_cp);
+  inline void set_value(size_t start, const ByteArray& other) {
+    assert(start < n && start + other.n < n);
+    std::memcpy(data + start, other.data, other.n);
   }
 
   template <typename T>
@@ -66,10 +65,12 @@ class ByteArray {
   inline size_t size() const { return n; }
 
   template <typename T>
-  inline T get(int index) const {
+  inline T get(size_t index) const {
+    assert(index < n);
     return cast_data<T>(index)[0];
   }
   inline ByteArray slice(size_t start, size_t end) const {
+    assert(start < end && end < n);
     ByteArray arr{end - start};
     std::memcpy(arr.data, data + start, end - start);
     return ByteArray{arr};

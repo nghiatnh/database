@@ -225,10 +225,23 @@ BInternalNode BTree::remove_node(BInternalNode&& node, const ByteArray& key) {
   if (page_node->type() == NodeType::INTERNAL) {
     auto internal = static_cast<BInternalNode*>(page_node.release());
     auto result = remove_node(move(*internal), key);
-    if (result.data_size() > PAGE_SIZE) {
-      auto new_node = split_node(move(node), offset, move(result));
-      store_driver->delete_page(page);
-      return new_node;
+    if (result.data_size() < PAGE_SIZE / 2) {
+      if (offset > 0) {
+        auto left = BInternalNode(store_driver->get(node.get_pointer(offset - 1)));
+        if (left.data_size() < PAGE_SIZE * 2 / 4 || result.n_keys() == 0) {
+          auto new_node = merge_node(move(node), offset - 1, move(left), move(result));
+          store_driver->delete_page(page);
+          return new_node;
+        }
+      }
+      if (offset < node.n_keys()) {
+        auto right = BInternalNode(store_driver->get(node.get_pointer(offset + 1)));
+        if (right.data_size() < PAGE_SIZE * 2 / 4 || result.n_keys() == 0) {
+          auto new_node = merge_node(move(node), offset, move(result), move(right));
+          store_driver->delete_page(page);
+          return new_node;
+        }
+      }
     }
     auto result_page = store_driver->new_page(result.data_arr());
     node.set_pointer(offset, result_page);
@@ -237,10 +250,23 @@ BInternalNode BTree::remove_node(BInternalNode&& node, const ByteArray& key) {
   } else {
     auto leaf = static_cast<BLeafNode*>(page_node.release());
     auto result = remove_node(move(*leaf), key);
-    if (result.data_size() > PAGE_SIZE) {
-      auto new_node = split_node(move(node), offset, move(result));
-      store_driver->delete_page(page);
-      return new_node;
+    if (result.data_size() < PAGE_SIZE / 4) {
+      if (offset > 0) {
+        auto left = BLeafNode(store_driver->get(node.get_pointer(offset - 1)));
+        if (left.data_size() < PAGE_SIZE * 3 / 4 || result.n_keys() == 0) {
+          auto new_node = merge_node(move(node), offset - 1, move(left), move(result));
+          store_driver->delete_page(page);
+          return new_node;
+        }
+      }
+      if (offset < node.n_keys()) {
+        auto right = BLeafNode(store_driver->get(node.get_pointer(offset + 1)));
+        if (right.data_size() < PAGE_SIZE * 3 / 4 || result.n_keys() == 0) {
+          auto new_node = merge_node(move(node), offset, move(result), move(right));
+          store_driver->delete_page(page);
+          return new_node;
+        }
+      }
     }
     auto result_page = store_driver->new_page(result.data_arr());
     node.set_pointer(offset, result_page);
@@ -266,15 +292,20 @@ BInternalNode BTree::merge_node(BInternalNode&& parent, size_t index, BLeafNode&
     new_node.set_offset(i, left.get_offset(i));
   }
   for (size_t i = left.n_keys(); i < new_node.n_keys() + 1; ++i) {
-    right.set_offset(i, right.get_offset(i - left.n_keys()) + left.get_offset(left.n_keys()));
+    new_node.set_offset(i, right.get_offset(i - left.n_keys()) + left.get_offset(left.n_keys()));
   }
   for (size_t i = 0; i < left.n_keys(); ++i) {
-    left.set_key_value(i, left.get_key(i), left.get_value(i));
+    new_node.set_key_value(i, left.get_key(i), left.get_value(i));
   }
   for (size_t i = left.n_keys(); i < new_node.n_keys(); ++i) {
-    right.set_key_value(i - left.n_keys(), right.get_key(i - left.n_keys()),
-                        right.get_value(i - left.n_keys()));
+    new_node.set_key_value(i, right.get_key(i - left.n_keys()), right.get_value(i - left.n_keys()));
   }
+
+  // For root node
+  if (parent.n_keys() == 1) {
+    return BInternalNode(new_node.data_arr());
+  }
+
   auto new_ptr = store_driver->new_page(new_node.data_arr());
 
   BInternalNode new_parent{ByteArray{2 * PAGE_SIZE}};
@@ -316,11 +347,11 @@ BInternalNode BTree::merge_node(BInternalNode&& parent, size_t index, BInternalN
     add_sz = static_cast<BLeafNode*>(&add_page)->get_key(0).size();
   }
 
-  for (size_t i = 0; i < left.n_keys(); ++i) {
+  for (size_t i = 0; i < left.n_keys() + 1; ++i) {
     new_node.set_offset(i, left.get_offset(i));
   }
-  new_node.set_offset(left.n_keys(), left.get_offset(left.n_keys()) + add_sz);
-  for (size_t i = left.n_keys() + 1; i < new_node.n_keys() + 1; ++i) {
+  new_node.set_offset(left.n_keys() + 1, left.get_offset(left.n_keys()) + add_sz);
+  for (size_t i = left.n_keys() + 2; i < new_node.n_keys() + 1; ++i) {
     new_node.set_offset(
         i, right.get_offset(i - left.n_keys() - 1) + left.get_offset(left.n_keys()) + add_sz);
   }
@@ -334,13 +365,18 @@ BInternalNode BTree::merge_node(BInternalNode&& parent, size_t index, BInternalN
     new_node.set_key(i, left.get_key(i));
   }
   for (size_t i = left.n_keys() + 1; i < new_node.n_keys(); ++i) {
-    right.set_key(i, right.get_key(i - left.n_keys() - 1));
+    new_node.set_key(i, right.get_key(i - left.n_keys() - 1));
   }
 
   if (add_page.type() == NodeType::INTERNAL) {
     new_node.set_key(left.n_keys(), static_cast<BInternalNode*>(&add_page)->get_key(0));
   } else {
     new_node.set_key(left.n_keys(), static_cast<BLeafNode*>(&add_page)->get_key(0));
+  }
+
+  // For root only
+  if (parent.n_keys() == 1) {
+    return new_node;
   }
 
   auto new_ptr = store_driver->new_page(new_node.data_arr());
