@@ -93,7 +93,7 @@ struct BLeafNode : public BNode {
     return node;
   }
 
-  BLeafNode delete_key(size_t index) {
+  BLeafNode remove_key(size_t index) {
     BLeafNode node{ByteArray{data.size()}};
     node.set_type(type());
     node.set_n_keys(n_keys() - 1);

@@ -13,11 +13,15 @@ class BTree {
  public:
   BTree(std::unique_ptr<driver::IDriver> sd) : root{0} { store_driver = std::move(sd); }
 
-  void insert(const std::vector<std::byte> &key, const std::vector<std::byte> &value) {
+  inline void insert(const std::vector<std::byte> &key, const std::vector<std::byte> &value) {
+    insert(ByteArray{key}, ByteArray{value});
+  }
+  inline void insert(const std::string &key, const std::string &value) {
     insert(ByteArray{key}, ByteArray{value});
   }
   void insert(const ByteArray &key, const ByteArray &value);
-  void remove(const std::vector<std::byte> &key) { remove(ByteArray{key}); }
+  inline void remove(const std::vector<std::byte> &key) { remove(ByteArray{key}); }
+  inline void remove(const std::string &key) { remove(ByteArray{key}); }
   void remove(const ByteArray &key);
   inline size_t get_root() const { return root; }
 
@@ -34,6 +38,7 @@ class BTree {
   BLeafNode insert_node(BLeafNode &&node, const ByteArray &key, const ByteArray &value);
 
   size_t search_key(const BNode *node, const ByteArray &key) const;
+  int search_exact_key(const BLeafNode *node, const ByteArray &key) const;
 
   BInternalNode split_node(BInternalNode &&parent, size_t index, BLeafNode &&node);
   BInternalNode split_node(BInternalNode &&parent, size_t index, BInternalNode &&node);
@@ -42,8 +47,10 @@ class BTree {
 
   BLeafNode remove_node(BLeafNode &&node, const ByteArray &key);
 
-  BInternalNode merge_node(BInternalNode &&parent, size_t index, BLeafNode &&node);
-  BInternalNode merge_node(BInternalNode &&parent, size_t index, BInternalNode &&node);
+  BInternalNode merge_node(BInternalNode &&parent, size_t index, BLeafNode &&left,
+                           BLeafNode &&right);
+  BInternalNode merge_node(BInternalNode &&parent, size_t index, BInternalNode &&left,
+                           BInternalNode &&right);
 
   void print_node(int page, const BNode *node);
 };

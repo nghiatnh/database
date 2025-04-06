@@ -143,32 +143,33 @@ BInternalNode BTree::split_node(BInternalNode&& parent, size_t index, BLeafNode&
 
 // Split leaf node
 BInternalNode BTree::split_node(BInternalNode&& parent, size_t index, BInternalNode&& node) {
-  size_t n_left = (node.n_keys() + 1) / 2;
+  auto n_left = (node.n_keys() + 1) / 2;
   auto n_right = node.n_keys() - n_left;
+  n_left -= 1;
 
   BInternalNode left{ByteArray{2 * PAGE_SIZE}};
   BInternalNode right{ByteArray{2 * PAGE_SIZE}};
   left.set_type(NodeType::INTERNAL);
   right.set_type(NodeType::INTERNAL);
-  left.set_n_keys(n_left - 1);
+  left.set_n_keys(n_left);
   right.set_n_keys(n_right);
-  for (size_t i = 0; i < n_left; ++i) {
+  for (size_t i = 0; i < n_left + 1; ++i) {
     left.set_offset(i, node.get_offset(i));
   }
-  for (size_t i = n_left; i < node.n_keys() + 1; ++i) {
-    right.set_offset(i - n_left, node.get_offset(i) - node.get_offset(n_left));
+  for (size_t i = n_left + 1; i < node.n_keys() + 1; ++i) {
+    right.set_offset(i - n_left - 1, node.get_offset(i) - node.get_offset(n_left + 1));
   }
-  for (size_t i = 0; i < n_left; ++i) {
+  for (size_t i = 0; i < n_left + 1; ++i) {
     left.set_pointer(i, node.get_pointer(i));
   }
-  for (size_t i = n_left; i < node.n_keys() + 1; ++i) {
-    right.set_pointer(i - n_left, node.get_pointer(i));
+  for (size_t i = n_left + 1; i < node.n_keys() + 1; ++i) {
+    right.set_pointer(i - n_left - 1, node.get_pointer(i));
   }
-  for (size_t i = 0; i < n_left - 1; ++i) {
+  for (size_t i = 0; i < n_left; ++i) {
     left.set_key(i, node.get_key(i));
   }
-  for (size_t i = n_left; i < node.n_keys(); ++i) {
-    right.set_key(i - n_left, node.get_key(i));
+  for (size_t i = n_left + 1; i < node.n_keys(); ++i) {
+    right.set_key(i - n_left - 1, node.get_key(i));
   }
   auto left_ptr = store_driver->new_page(left.data_arr());
   auto right_ptr = store_driver->new_page(right.data_arr());
@@ -200,23 +201,202 @@ BInternalNode BTree::split_node(BInternalNode&& parent, size_t index, BInternalN
   return new_parent;
 }
 
+// Insert a key-value pair
+void BTree::remove(const ByteArray& key) {
+  auto root_page = make_unique<BNode>(store_driver->get(root));
+  auto old_root = root;
+  if (root_page->type() == NodeType::INTERNAL) {
+    auto internal = static_cast<BInternalNode*>(root_page.release());
+    auto result = remove_node(move(*internal), key);
+    root = store_driver->new_page(result.data_arr());
+  } else if (root_page->type() == NodeType::LEAF) {
+    auto leaf = static_cast<BLeafNode*>(root_page.release());
+    auto result = remove_node(move(*leaf), key);
+    root = store_driver->new_page(result.data_arr());
+  }
+  store_driver->delete_page(old_root);
+}
+
+// Insert Internal
+BInternalNode BTree::remove_node(BInternalNode&& node, const ByteArray& key) {
+  auto offset = search_key(static_cast<const BNode*>(&node), key);
+  auto page = node.get_pointer(offset);
+  auto page_node = make_unique<BNode>(store_driver->get(page));
+  if (page_node->type() == NodeType::INTERNAL) {
+    auto internal = static_cast<BInternalNode*>(page_node.release());
+    auto result = remove_node(move(*internal), key);
+    if (result.data_size() > PAGE_SIZE) {
+      auto new_node = split_node(move(node), offset, move(result));
+      store_driver->delete_page(page);
+      return new_node;
+    }
+    auto result_page = store_driver->new_page(result.data_arr());
+    node.set_pointer(offset, result_page);
+    store_driver->delete_page(page);
+    return node;
+  } else {
+    auto leaf = static_cast<BLeafNode*>(page_node.release());
+    auto result = remove_node(move(*leaf), key);
+    if (result.data_size() > PAGE_SIZE) {
+      auto new_node = split_node(move(node), offset, move(result));
+      store_driver->delete_page(page);
+      return new_node;
+    }
+    auto result_page = store_driver->new_page(result.data_arr());
+    node.set_pointer(offset, result_page);
+    store_driver->delete_page(page);
+    return node;
+  }
+}
+
+// Insert Leaf
+BLeafNode BTree::remove_node(BLeafNode&& node, const ByteArray& key) {
+  auto index = search_exact_key(&node, key);
+  auto result = node.remove_key(index);
+  return result;
+}
+
+// Split internal node
+BInternalNode BTree::merge_node(BInternalNode&& parent, size_t index, BLeafNode&& left,
+                                BLeafNode&& right) {
+  BLeafNode new_node{ByteArray{2 * PAGE_SIZE}};
+  new_node.set_type(NodeType::LEAF);
+  new_node.set_n_keys(left.n_keys() + right.n_keys());
+  for (size_t i = 0; i < left.n_keys(); ++i) {
+    new_node.set_offset(i, left.get_offset(i));
+  }
+  for (size_t i = left.n_keys(); i < new_node.n_keys() + 1; ++i) {
+    right.set_offset(i, right.get_offset(i - left.n_keys()) + left.get_offset(left.n_keys()));
+  }
+  for (size_t i = 0; i < left.n_keys(); ++i) {
+    left.set_key_value(i, left.get_key(i), left.get_value(i));
+  }
+  for (size_t i = left.n_keys(); i < new_node.n_keys(); ++i) {
+    right.set_key_value(i - left.n_keys(), right.get_key(i - left.n_keys()),
+                        right.get_value(i - left.n_keys()));
+  }
+  auto new_ptr = store_driver->new_page(new_node.data_arr());
+
+  BInternalNode new_parent{ByteArray{2 * PAGE_SIZE}};
+  new_parent.set_type(NodeType::INTERNAL);
+  new_parent.set_n_keys(parent.n_keys() - 1);
+  for (size_t i = 0; i < index; ++i) {
+    new_parent.set_pointer(i, parent.get_pointer(i));
+  }
+  new_parent.set_pointer(index, new_ptr);
+  for (size_t i = index + 1; i < new_parent.n_keys() + 1; ++i) {
+    new_parent.set_pointer(i, parent.get_pointer(i + 1));
+  }
+  for (size_t i = 0; i <= index; ++i) {
+    new_parent.set_offset(i, parent.get_offset(i));
+  }
+  for (size_t i = index + 1; i < new_parent.n_keys() + 1; ++i) {
+    new_parent.set_offset(i, parent.get_offset(i + 1) - parent.get_key(index).size());
+  }
+  for (size_t i = 0; i < index; ++i) {
+    new_parent.set_key(i, parent.get_key(i));
+  }
+  for (size_t i = index; i < new_parent.n_keys(); ++i) {
+    new_parent.set_key(i, parent.get_key(i + 1));
+  }
+  return new_parent;
+}
+
+// Split leaf node
+BInternalNode BTree::merge_node(BInternalNode&& parent, size_t index, BInternalNode&& left,
+                                BInternalNode&& right) {
+  BInternalNode new_node{ByteArray{2 * PAGE_SIZE}};
+  new_node.set_type(NodeType::INTERNAL);
+  new_node.set_n_keys(left.n_keys() + right.n_keys() + 1);
+  auto add_page = BNode(store_driver->get(right.get_pointer(0)));
+  size_t add_sz = 0;
+  if (add_page.type() == NodeType::INTERNAL) {
+    add_sz = static_cast<BInternalNode*>(&add_page)->get_key(0).size();
+  } else {
+    add_sz = static_cast<BLeafNode*>(&add_page)->get_key(0).size();
+  }
+
+  for (size_t i = 0; i < left.n_keys(); ++i) {
+    new_node.set_offset(i, left.get_offset(i));
+  }
+  new_node.set_offset(left.n_keys(), left.get_offset(left.n_keys()) + add_sz);
+  for (size_t i = left.n_keys() + 1; i < new_node.n_keys() + 1; ++i) {
+    new_node.set_offset(
+        i, right.get_offset(i - left.n_keys() - 1) + left.get_offset(left.n_keys()) + add_sz);
+  }
+  for (size_t i = 0; i < left.n_keys() + 1; ++i) {
+    new_node.set_pointer(i, left.get_pointer(i));
+  }
+  for (size_t i = left.n_keys() + 1; i < new_node.n_keys() + 1; ++i) {
+    new_node.set_pointer(i, right.get_pointer(i - left.n_keys() - 1));
+  }
+  for (size_t i = 0; i < left.n_keys(); ++i) {
+    new_node.set_key(i, left.get_key(i));
+  }
+  for (size_t i = left.n_keys() + 1; i < new_node.n_keys(); ++i) {
+    right.set_key(i, right.get_key(i - left.n_keys() - 1));
+  }
+
+  if (add_page.type() == NodeType::INTERNAL) {
+    new_node.set_key(left.n_keys(), static_cast<BInternalNode*>(&add_page)->get_key(0));
+  } else {
+    new_node.set_key(left.n_keys(), static_cast<BLeafNode*>(&add_page)->get_key(0));
+  }
+
+  auto new_ptr = store_driver->new_page(new_node.data_arr());
+
+  BInternalNode new_parent{ByteArray{2 * PAGE_SIZE}};
+  new_parent.set_type(NodeType::INTERNAL);
+  new_parent.set_n_keys(parent.n_keys() - 1);
+  for (size_t i = 0; i < index; ++i) {
+    new_parent.set_pointer(i, parent.get_pointer(i));
+  }
+  new_parent.set_pointer(index, new_ptr);
+  for (size_t i = index + 1; i < new_parent.n_keys() + 1; ++i) {
+    new_parent.set_pointer(i, parent.get_pointer(i + 1));
+  }
+  for (size_t i = 0; i <= index; ++i) {
+    new_parent.set_offset(i, parent.get_offset(i));
+  }
+  for (size_t i = index + 1; i < new_parent.n_keys() + 1; ++i) {
+    new_parent.set_offset(i, parent.get_offset(i + 1) - parent.get_key(index).size());
+  }
+  for (size_t i = 0; i < index; ++i) {
+    new_parent.set_key(i, parent.get_key(i));
+  }
+  for (size_t i = index; i < new_parent.n_keys(); ++i) {
+    new_parent.set_key(i, parent.get_key(i + 1));
+  }
+  return new_parent;
+}
+
 // Search key
 size_t BTree::search_key(const BNode* node, const ByteArray& key) const {
   if (node->n_keys() == 0) return 0;
-  for (size_t i = 0; i < node->n_keys(); ++i) {
-    if (node->type() == NodeType::INTERNAL) {
-      auto internal = *static_cast<const BInternalNode*>(node);
-      if (internal.get_key(i) >= key) {
-        return i;
-      }
-    } else {
-      auto leaf = *static_cast<const BLeafNode*>(node);
-      if (leaf.get_key(i) >= key) {
-        return i;
-      }
+  size_t i = 0;
+  if (node->type() == NodeType::INTERNAL) {
+    auto internal = *static_cast<const BInternalNode*>(node);
+    while (i < node->n_keys() && key >= internal.get_key(i)) {
+      ++i;
+    }
+  } else {
+    auto leaf = *static_cast<const BLeafNode*>(node);
+    while (i < node->n_keys() && key >= leaf.get_key(i)) {
+      ++i;
     }
   }
-  return node->n_keys();
+  return i;
+};
+
+// Search key
+int BTree::search_exact_key(const BLeafNode* node, const ByteArray& key) const {
+  if (node->n_keys() == 0) return -1;
+  for (size_t i = 0; i < node->n_keys(); ++i) {
+    if (node->get_key(i) == key) {
+      return i;
+    }
+  }
+  return -1;
 };
 
 // Print a node
