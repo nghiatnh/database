@@ -23,10 +23,23 @@ enum class NodeType : uint8_t {
 struct BNode {
  public:
   BNode(const ByteArray& _data) : data{_data} {}
+  virtual ~BNode() {}
+
   inline NodeType type() const { return NodeType{data.get<uint8_t>(0)}; }
   inline void set_type(NodeType node_type) { data.set_value(0, std::byte(node_type)); }
+
   inline size_t n_keys() const { return data.get<size_t>(NODE_TYPE_SZ); }
   inline void set_n_keys(size_t sz) { data.set_value(NODE_TYPE_SZ, sz); }
+
+  inline size_t data_size() const { return key_start() + get_offset(n_keys()); }
+
+  virtual size_t key_start() const = 0;
+
+  virtual ByteArray get_key(size_t index) const = 0;
+
+  virtual size_t get_offset(size_t index) const = 0;
+  virtual void set_offset(size_t index, size_t offset) = 0;
+
   inline const ByteArray& data_arr() const { return data; }
 
  protected:
@@ -39,19 +52,21 @@ struct BNode {
 // 8B       | 8B         | Key Size * 1B | Value Size * 1B
 struct BLeafNode : public BNode {
  public:
-  inline size_t data_size() const { return key_start() + get_offset(n_keys()); }
-  inline size_t key_start() const { return NODE_TYPE_SZ + N_KEY_SZ + n_keys() * OFFSET_SZ; }
+  BLeafNode(const ByteArray& _data) : BNode(_data) {}
+  ~BLeafNode() override {}
 
-  inline size_t get_offset(int index) const {
+  size_t key_start() const override { return NODE_TYPE_SZ + N_KEY_SZ + n_keys() * OFFSET_SZ; }
+
+  size_t get_offset(size_t index) const override {
     if (index == 0) return 0;
     return data.get<size_t>(NODE_TYPE_SZ + N_KEY_SZ + (index - 1) * OFFSET_SZ);
   }
-  inline void set_offset(int index, size_t offset) {
+  void set_offset(size_t index, size_t offset) override {
     if (index == 0) return;
     return data.set_value(NODE_TYPE_SZ + N_KEY_SZ + (index - 1) * OFFSET_SZ, offset);
   }
 
-  ByteArray get_key(int index) const {
+  ByteArray get_key(size_t index) const override {
     auto offset = key_start() + get_offset(index);
     auto key_sz = data.get<size_t>(offset);
     auto start = offset + 2 * KV_SIZE_SZ;
@@ -72,7 +87,7 @@ struct BLeafNode : public BNode {
     data.set_value(kv_pos + 2 * KV_SIZE_SZ + key.size(), value);
   }
 
-  BLeafNode insert_key(size_t index, const ByteArray& key, const ByteArray& value) {
+  BLeafNode insert_key(size_t index, const ByteArray& key, const ByteArray& value) const {
     BLeafNode node{ByteArray{data.size()}};
     node.set_type(type());
     node.set_n_keys(n_keys() + 1);
@@ -93,7 +108,7 @@ struct BLeafNode : public BNode {
     return node;
   }
 
-  BLeafNode remove_key(size_t index) {
+  BLeafNode remove_key(size_t index) const {
     BLeafNode node{ByteArray{data.size()}};
     node.set_type(type());
     node.set_n_keys(n_keys() - 1);
@@ -118,38 +133,49 @@ struct BLeafNode : public BNode {
 // 1B        | 8B     | (N Keys + 1) * 8B | N Keys * 8B | ...
 struct BInternalNode : public BNode {
  public:
-  inline size_t key_start() const {
+  BInternalNode(const ByteArray& _data) : BNode(_data) {}
+  ~BInternalNode() override {}
+
+  size_t key_start() const override {
     return NODE_TYPE_SZ + N_KEY_SZ + (n_keys() + 1) * POINTER_SZ + n_keys() * OFFSET_SZ;
   }
-  inline size_t data_size() const { return key_start() + get_offset(n_keys()); }
 
-  inline ByteArray get_key(int index) const {
+  ByteArray get_key(size_t index) const override {
     auto start = key_start() + get_offset(index);
     auto end = key_start() + get_offset(index + 1);
     return data.slice(start, end);
   }
-  inline void set_key(int index, const ByteArray& key) {
+  inline void set_key(size_t index, const ByteArray& key) {
     data.set_value(key_start() + get_offset(index), key);
   }
 
-  inline size_t get_offset(int index) const {
+  size_t get_offset(size_t index) const override {
     if (index == 0) return 0;
     return data.get<size_t>(NODE_TYPE_SZ + N_KEY_SZ + (n_keys() + 1) * POINTER_SZ +
                             (index - 1) * OFFSET_SZ);
   }
-  inline void set_offset(int index, size_t offset) {
+  inline void set_offset(size_t index, size_t offset) {
     if (index == 0) return;
     data.set_value(NODE_TYPE_SZ + N_KEY_SZ + (n_keys() + 1) * POINTER_SZ + (index - 1) * OFFSET_SZ,
                    offset);
   }
 
-  inline size_t get_pointer(int index) const {
+  inline size_t get_pointer(size_t index) const {
     return data.get<size_t>(NODE_TYPE_SZ + N_KEY_SZ + index * POINTER_SZ);
   }
-  inline void set_pointer(int index, size_t ptr) {
+  inline void set_pointer(size_t index, size_t ptr) {
     data.set_value(NODE_TYPE_SZ + N_KEY_SZ + index * POINTER_SZ, ptr);
   }
 };
+
+inline std::unique_ptr<BNode> get_node(const ByteArray& arr) {
+  assert(NodeType(arr.get<std::byte>(0)) != NodeType::EMPTY);
+  if (NodeType(arr.get<std::byte>(0)) == NodeType::INTERNAL) {
+    return std::make_unique<BInternalNode>(arr);
+  } else {
+    return std::make_unique<BLeafNode>(arr);
+  }
+}
 
 }  // namespace cpp_database
 

@@ -20,39 +20,57 @@ class BTree {
     insert(ByteArray{key}, ByteArray{value});
   }
   void insert(const ByteArray &key, const ByteArray &value);
+
   inline void remove(const std::vector<std::byte> &key) { remove(ByteArray{key}); }
   inline void remove(const std::string &key) { remove(ByteArray{key}); }
   void remove(const ByteArray &key);
-  inline size_t get_root() const { return root; }
 
+  inline size_t get_root() const { return root; }
   inline const driver::IDriver *get_driver() const { return store_driver.get(); }
 
-  void print();
+  void print() const;
 
  private:
   size_t root;
   std::unique_ptr<driver::IDriver> store_driver;
 
-  BInternalNode insert_node(BInternalNode &&node, const ByteArray &key, const ByteArray &value);
+  std::unique_ptr<BNode> insert_node(const BNode &node, const ByteArray &key,
+                                     const ByteArray &value) const;
 
-  BLeafNode insert_node(BLeafNode &&node, const ByteArray &key, const ByteArray &value);
+  std::unique_ptr<BNode> remove_node(const BNode &node, const ByteArray &key) const;
 
-  size_t search_key(const BNode *node, const ByteArray &key) const;
-  int search_exact_key(const BLeafNode *node, const ByteArray &key) const;
+  size_t search_key(const BNode &node, const ByteArray &key) const;
+  int search_exact_key(const BLeafNode &node, const ByteArray &key) const;
 
-  BInternalNode split_node(BInternalNode &&parent, size_t index, BLeafNode &&node);
-  BInternalNode split_node(BInternalNode &&parent, size_t index, BInternalNode &&node);
+  inline std::unique_ptr<BInternalNode> split_node(const BInternalNode &parent, size_t index,
+                                                   const BNode &node) const {
+    if (node.type() == NodeType::LEAF) {
+      return split_node(parent, index, static_cast<const BLeafNode &>(node));
+    } else {
+      return split_node(parent, index, static_cast<const BInternalNode &>(node));
+    }
+  }
+  std::unique_ptr<BInternalNode> split_node(const BInternalNode &parent, size_t index,
+                                            const BLeafNode &node) const;
+  std::unique_ptr<BInternalNode> split_node(const BInternalNode &parent, size_t index,
+                                            const BInternalNode &node) const;
 
-  BInternalNode remove_node(BInternalNode &&node, const ByteArray &key);
+  inline std::unique_ptr<BNode> merge_node(const BInternalNode &parent, size_t index,
+                                           const BNode &left, const BNode &right) const {
+    if (left.type() == NodeType::LEAF) {
+      return merge_node(parent, index, static_cast<const BLeafNode &>(left),
+                        static_cast<const BLeafNode &>(right));
+    } else {
+      return merge_node(parent, index, static_cast<const BInternalNode &>(left),
+                        static_cast<const BInternalNode &>(right));
+    }
+  }
+  std::unique_ptr<BNode> merge_node(const BInternalNode &parent, size_t index,
+                                    const BLeafNode &left, const BLeafNode &right) const;
+  std::unique_ptr<BNode> merge_node(const BInternalNode &parent, size_t index,
+                                    const BInternalNode &left, const BInternalNode &right) const;
 
-  BLeafNode remove_node(BLeafNode &&node, const ByteArray &key);
-
-  BInternalNode merge_node(BInternalNode &&parent, size_t index, BLeafNode &&left,
-                           BLeafNode &&right);
-  BInternalNode merge_node(BInternalNode &&parent, size_t index, BInternalNode &&left,
-                           BInternalNode &&right);
-
-  void print_node(int page, const BNode *node);
+  void print_node(int page, const BNode &node) const;
 };
 
 }  // namespace cpp_database

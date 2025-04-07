@@ -75,6 +75,8 @@ class ByteArray {
     std::memcpy(arr.data, data + start, end - start);
     return ByteArray{arr};
   }
+
+  // TODO: do not convert to string
   std::byte operator[](size_t index) const { return data[index]; }
   int operator>=(const ByteArray& other) const { return (c_str() >= other.c_str()); }
   int operator<=(const ByteArray& other) const { return (c_str() <= other.c_str()); }
