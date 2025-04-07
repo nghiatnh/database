@@ -78,16 +78,19 @@ class ByteArray {
 
   // TODO: do not convert to string
   std::byte operator[](size_t index) const { return data[index]; }
-  int operator>=(const ByteArray& other) const { return (c_str() >= other.c_str()); }
-  int operator<=(const ByteArray& other) const { return (c_str() <= other.c_str()); }
-  int operator<(const ByteArray& other) const { return (c_str() < other.c_str()); }
-  int operator>(const ByteArray& other) const { return (c_str() > other.c_str()); }
-  int operator==(const ByteArray& other) const { return (c_str() == other.c_str()); }
-  int operator!=(const ByteArray& other) const { return (c_str() != other.c_str()); }
+  int operator<=>(const ByteArray& other) const {
+    auto min_sz = std::min(n, other.n);
+    for (size_t i = 0; i < min_sz; ++i) {
+      if (data[i] != other.data[i]) {
+        return int(data[i]) - int(other.data[i]);
+      }
+    }
+    return int(n) - int(other.n);
+  }
+  bool operator==(const ByteArray& other) const { return (*this <=> other == 0); }
 
  private:
   size_t n;
-  bool shallow;
   std::byte* data;
 
   template <typename T>

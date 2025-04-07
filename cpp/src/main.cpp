@@ -2,12 +2,13 @@
 #include <string>
 
 #include "b_tree.h"
-#include "driver/memory.h"
 #include "debug.h"
+#include "driver/memory.h"
 
 using namespace cpp_database;
 
 int main() {
+  auto t = debug::TimeWatcher();
   auto sd = std::make_unique<driver::MemoryDriver>();
   BTree tree(std::move(sd));
   tree.insert(std::string{"hello"}, std::string{"world"});
