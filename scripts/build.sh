@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set -ex
 
 ROOTDIR=$(pwd)
 
@@ -13,9 +13,18 @@ else
   MODE=$1
 fi
 
+if [[ -z $2 ]]; then
+  ENABLE_TEST=ON
+elif [[ $2 != "ON" && $2 != "OFF" ]]; then
+  echo "Invalid mode '$2', set to default mode."
+  ENABLE_TEST=ON
+else
+  ENABLE_TEST=$2
+fi
+
 
 echo "Building with mode '$MODE' at '$ROOTDIR'"
 
 rm -rf $ROOTDIR/build
-cmake -DCMAKE_BUILD_TYPE=$MODE -B $ROOTDIR/build $ROOTDIR
+cmake -DCMAKE_BUILD_TYPE=$MODE -DENABLE_TESTING=$ENABLE_TEST -B $ROOTDIR/build $ROOTDIR
 cmake --build $ROOTDIR/build -j
