@@ -13,7 +13,7 @@ namespace cpp_database {
 // Insert a key-value pair
 void BTree::insert(const ByteArray& key, const ByteArray& value) {
   if (is_empty()) {
-    ByteArray arr{2 * PAGE_SIZE};
+    ByteArray arr{PAGE_SIZE};
     arr.set_value<byte>(0, static_cast<byte>(NodeType::LEAF));
     arr.set_value<size_t>(1, 0);
     root = store_driver->new_page(arr);
@@ -22,23 +22,24 @@ void BTree::insert(const ByteArray& key, const ByteArray& value) {
   auto old_root = root;
   auto result = insert_node(*root_page, key, value);
   if (result->data_size() > PAGE_SIZE) {
-    BInternalNode parent{ByteArray{2 * PAGE_SIZE}};
+    BInternalNode parent{ByteArray{PAGE_SIZE}};
     parent.set_type(NodeType::INTERNAL);
     parent.set_n_keys(0);
     auto new_node = split_node(parent, 0, *result).release();
-    root = store_driver->new_page(new_node->data_arr());
+    root = store_driver->new_page(new_node->data_arr().slice(0, PAGE_SIZE));
   } else {
-    root = store_driver->new_page(result->data_arr());
+    root = store_driver->new_page(result->data_arr().slice(0, PAGE_SIZE));
   }
   store_driver->delete_page(old_root);
 }
 
 // Insert Internal
-unique_ptr<BNode> BTree::insert_node(const BNode& node, const ByteArray& key,
-                                     const ByteArray& value) const {
+unique_ptr<BNode> BTree::insert_node(const BNode& node, const ByteArray& key, const ByteArray& value) const {
   auto index = search_key(node, key);
   if (node.type() == NodeType::LEAF) {
-    auto leaf = static_cast<const BLeafNode&>(node);
+    ByteArray arr{2 * PAGE_SIZE};
+    arr.set_value(0, node.data_arr());
+    BLeafNode leaf{arr};
     return make_unique<BLeafNode>(leaf.insert_key(index, key, value));
   }
   auto internal = static_cast<const BInternalNode&>(node);
@@ -50,19 +51,18 @@ unique_ptr<BNode> BTree::insert_node(const BNode& node, const ByteArray& key,
     store_driver->delete_page(page);
     return new_node;
   }
-  auto result_page = store_driver->new_page(result->data_arr());
+  auto result_page = store_driver->new_page(result->data_arr().slice(0, PAGE_SIZE));
   internal.set_pointer(index, result_page);
   store_driver->delete_page(page);
   return make_unique<BInternalNode>(internal);
 }
 
-unique_ptr<BInternalNode> BTree::split_node(const BInternalNode& parent, size_t index,
-                                            const BLeafNode& node) const {
+unique_ptr<BInternalNode> BTree::split_node(const BInternalNode& parent, size_t index, const BLeafNode& node) const {
   size_t n_left = (node.n_keys() + 1) / 2;
   size_t n_right = node.n_keys() - n_left;
 
-  BLeafNode left{ByteArray{2 * PAGE_SIZE}};
-  BLeafNode right{ByteArray{2 * PAGE_SIZE}};
+  BLeafNode left{ByteArray{PAGE_SIZE}};
+  BLeafNode right{ByteArray{PAGE_SIZE}};
   left.set_type(NodeType::LEAF);
   right.set_type(NodeType::LEAF);
   left.set_n_keys(n_left);
@@ -116,8 +116,8 @@ unique_ptr<BInternalNode> BTree::split_node(const BInternalNode& parent, size_t 
   auto n_right = node.n_keys() - n_left;
   n_left -= 1;
 
-  BInternalNode left{ByteArray{2 * PAGE_SIZE}};
-  BInternalNode right{ByteArray{2 * PAGE_SIZE}};
+  BInternalNode left{ByteArray{PAGE_SIZE}};
+  BInternalNode right{ByteArray{PAGE_SIZE}};
   left.set_type(NodeType::INTERNAL);
   right.set_type(NodeType::INTERNAL);
   left.set_n_keys(n_left);
@@ -175,7 +175,7 @@ void BTree::remove(const ByteArray& key) {
   auto root_page = get_node(store_driver->get(root));
   auto old_root = root;
   auto result = remove_node(*root_page, key);
-  root = store_driver->new_page(result->data_arr());
+  root = store_driver->new_page(result->data_arr().slice(0, PAGE_SIZE));
   store_driver->delete_page(old_root);
 }
 
@@ -209,16 +209,16 @@ unique_ptr<BNode> BTree::remove_node(const BNode& node, const ByteArray& key) co
       }
     }
   }
-  auto result_page = store_driver->new_page(result->data_arr());
+  auto result_page = store_driver->new_page(result->data_arr().slice(0, PAGE_SIZE));
   internal.set_pointer(offset, result_page);
   store_driver->delete_page(page);
   return make_unique<BInternalNode>(internal);
 }
 
 // Split internal node
-unique_ptr<BNode> BTree::merge_node(const BInternalNode& parent, size_t index,
-                                    const BLeafNode& left, const BLeafNode& right) const {
-  BLeafNode new_node{ByteArray{2 * PAGE_SIZE}};
+unique_ptr<BNode> BTree::merge_node(const BInternalNode& parent, size_t index, const BLeafNode& left,
+                                    const BLeafNode& right) const {
+  BLeafNode new_node{ByteArray{PAGE_SIZE}};
   new_node.set_type(NodeType::LEAF);
   new_node.set_n_keys(left.n_keys() + right.n_keys());
   for (size_t i = 0; i < left.n_keys(); ++i) {
@@ -267,9 +267,9 @@ unique_ptr<BNode> BTree::merge_node(const BInternalNode& parent, size_t index,
 }
 
 // Split leaf node
-unique_ptr<BNode> BTree::merge_node(const BInternalNode& parent, size_t index,
-                                    const BInternalNode& left, const BInternalNode& right) const {
-  BInternalNode new_node{ByteArray{2 * PAGE_SIZE}};
+unique_ptr<BNode> BTree::merge_node(const BInternalNode& parent, size_t index, const BInternalNode& left,
+                                    const BInternalNode& right) const {
+  BInternalNode new_node{ByteArray{PAGE_SIZE}};
   new_node.set_type(NodeType::INTERNAL);
   new_node.set_n_keys(left.n_keys() + right.n_keys() + 1);
   auto add_page = get_node(store_driver->get(right.get_pointer(0)));
@@ -280,8 +280,7 @@ unique_ptr<BNode> BTree::merge_node(const BInternalNode& parent, size_t index,
   }
   new_node.set_offset(left.n_keys() + 1, left.get_offset(left.n_keys()) + add_sz);
   for (size_t i = left.n_keys() + 2; i < new_node.n_keys() + 1; ++i) {
-    new_node.set_offset(
-        i, right.get_offset(i - left.n_keys() - 1) + left.get_offset(left.n_keys()) + add_sz);
+    new_node.set_offset(i, right.get_offset(i - left.n_keys() - 1) + left.get_offset(left.n_keys()) + add_sz);
   }
   for (size_t i = 0; i < left.n_keys() + 1; ++i) {
     new_node.set_pointer(i, left.get_pointer(i));
@@ -354,8 +353,8 @@ int BTree::search_exact_key(const BLeafNode& node, const ByteArray& key) const {
 void BTree::print_node(int page, const BNode& node) const {
   if (node.type() == NodeType::INTERNAL) {
     auto internal = static_cast<const BInternalNode&>(node);
-    std::cout << "Internal node (ID: " << page << ", N: " << node.n_keys()
-              << ", SIZE: " << internal.data_size() << ")\n\tPointers: ";
+    std::cout << "Internal node (ID: " << page << ", N: " << node.n_keys() << ", SIZE: " << internal.data_size()
+              << ")\n\tPointers: ";
     for (size_t i = 0; i < internal.n_keys() + 1; ++i) {
       std::cout << internal.get_pointer(i) << " ";
     }
@@ -377,8 +376,8 @@ void BTree::print_node(int page, const BNode& node) const {
     }
   } else if (node.type() == NodeType::LEAF) {
     auto leaf = static_cast<const BLeafNode&>(node);
-    std::cout << "Leaf node (ID:" << page << ", N: " << node.n_keys()
-              << ", SIZE: " << leaf.data_size() << ")\n\tOffsets: ";
+    std::cout << "Leaf node (ID:" << page << ", N: " << node.n_keys() << ", SIZE: " << leaf.data_size()
+              << ")\n\tOffsets: ";
     for (size_t i = 0; i < leaf.n_keys() + 1; ++i) {
       std::cout << leaf.get_offset(i) << " ";
     }

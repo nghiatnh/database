@@ -36,8 +36,9 @@ class ByteArray {
   ByteArray& operator=(const ByteArray& other) {
     if (*this != other) {
       delete[] data;
-      data = new std::byte[other.n];
-      std::memcpy(data, other.data, other.n);
+      n = other.n;
+      data = new std::byte[n];
+      std::memcpy(data, other.data, n);
     }
     return *this;
   };

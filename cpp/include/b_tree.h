@@ -24,6 +24,7 @@ class BTree {
   void remove(const ByteArray &key);
 
   inline size_t get_root() const { return root; }
+  inline void set_root(size_t _root) { root = _root; }
   inline bool is_empty() const { return root == 0; }
   inline const driver::IBTreeDriver *get_driver() const { return store_driver; }
 

@@ -31,6 +31,7 @@ struct MasterPage {
     arr.set_value(DB_SIGNATURE_SZ, root);
     arr.set_value(DB_SIGNATURE_SZ + POINTER_SZ, head);
     arr.set_value(DB_SIGNATURE_SZ + POINTER_SZ + POINTER_SZ, n_flushed);
+    return ByteArray{arr};
   }
 };
 

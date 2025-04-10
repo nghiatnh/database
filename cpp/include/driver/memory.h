@@ -30,6 +30,7 @@ class MemoryDriver : public IBTreeDriver, public IStackDriver {
 };
 
 class MemoryIO : public IIODriver {
+ public:
   MemoryIO() { data = ByteArray{0}; }
   bool open() { return true; }
   bool close() { return true; }
