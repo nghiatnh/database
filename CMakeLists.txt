@@ -17,3 +17,8 @@ add_executable(cpp_database ${SOURCES})
 
 # Compiler options
 target_compile_options(cpp_database PRIVATE -O3 -Wall -Wextra -Wpedantic)
+
+# Testing
+enable_testing()
+add_subdirectory(external/googletest)
+add_subdirectory(tests)
