@@ -107,6 +107,27 @@ struct BLeafNode : public BNode {
     return node;
   }
 
+  BLeafNode update_key(size_t index, const ByteArray& key, const ByteArray& value) const {
+    BLeafNode node{ByteArray{data.size()}};
+    node.set_type(type());
+    node.set_n_keys(n_keys());
+    for (size_t i = 0; i <= index; ++i) {
+      node.set_offset(i, get_offset(i));
+    }
+    size_t add_sz = int64_t(key.size() + value.size()) - int64_t(get_key(index).size() + get_value(index).size());
+    for (size_t i = index + 1; i < node.n_keys() + 1; ++i) {
+      node.set_offset(i, get_offset(i) + add_sz);
+    }
+    for (size_t i = 0; i < index; ++i) {
+      node.set_key_value(i, get_key(i), get_value(i));
+    }
+    node.set_key_value(index, key, value);
+    for (size_t i = index + 1; i < node.n_keys(); ++i) {
+      node.set_key_value(i, get_key(i), get_value(i));
+    }
+    return node;
+  }
+
   BLeafNode remove_key(size_t index) const {
     BLeafNode node{ByteArray{data.size()}};
     node.set_type(type());

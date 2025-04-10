@@ -11,7 +11,8 @@ using namespace std;
 namespace cpp_database {
 
 // Insert a key-value pair
-void BTree::insert(const ByteArray& key, const ByteArray& value) {
+template <bool ALLOW_INSERT>
+void BTree::insert_or_update(const ByteArray& key, const ByteArray& value) {
   if (is_empty()) {
     ByteArray arr{PAGE_SIZE};
     arr.set_value<byte>(0, static_cast<byte>(NodeType::LEAF));
@@ -20,7 +21,7 @@ void BTree::insert(const ByteArray& key, const ByteArray& value) {
   }
   auto root_page = get_node(store_driver->get(root));
   auto old_root = root;
-  auto result = insert_node(*root_page, key, value);
+  auto result = insert_or_update_node<ALLOW_INSERT>(*root_page, key, value);
   if (result->data_size() > PAGE_SIZE) {
     BInternalNode parent{ByteArray{PAGE_SIZE}};
     parent.set_type(NodeType::INTERNAL);
@@ -34,18 +35,28 @@ void BTree::insert(const ByteArray& key, const ByteArray& value) {
 }
 
 // Insert Internal
-unique_ptr<BNode> BTree::insert_node(const BNode& node, const ByteArray& key, const ByteArray& value) const {
+template <bool ALLOW_INSERT>
+unique_ptr<BNode> BTree::insert_or_update_node(const BNode& node, const ByteArray& key, const ByteArray& value) const {
   auto index = search_key(node, key);
   if (node.type() == NodeType::LEAF) {
     ByteArray arr{2 * PAGE_SIZE};
     arr.set_value(0, node.data_arr());
     BLeafNode leaf{arr};
-    return make_unique<BLeafNode>(leaf.insert_key(index, key, value));
+    bool found = index > 0 && leaf.get_key(index - 1) == key;
+    if constexpr (ALLOW_INSERT) {
+      assert(!found);
+      // Insert only
+      return make_unique<BLeafNode>(leaf.insert_key(index, key, value));
+    } else {
+      // Update only
+      assert(found);
+      return make_unique<BLeafNode>(leaf.update_key(index - 1, key, value));
+    }
   }
   auto internal = static_cast<const BInternalNode&>(node);
   auto page = internal.get_pointer(index);
   auto page_node = get_node(store_driver->get(page));
-  auto result = insert_node(*page_node, key, value);
+  auto result = insert_or_update_node<ALLOW_INSERT>(*page_node, key, value);
   if (result->data_size() > PAGE_SIZE) {
     auto new_node = split_node(internal, index, *result);
     store_driver->delete_page(page);
@@ -403,4 +414,6 @@ void BTree::print() const {
   print_node(root, *root_page);
 }
 
+template void BTree::insert_or_update<true>(const ByteArray& key, const ByteArray& value);
+template void BTree::insert_or_update<false>(const ByteArray& key, const ByteArray& value);
 }  // namespace cpp_database

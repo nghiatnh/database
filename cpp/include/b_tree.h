@@ -17,7 +17,13 @@ class BTree {
     insert(ByteArray{key}, ByteArray{value});
   }
   inline void insert(const std::string &key, const std::string &value) { insert(ByteArray{key}, ByteArray{value}); }
-  void insert(const ByteArray &key, const ByteArray &value);
+  inline void insert(const ByteArray &key, const ByteArray &value) { insert_or_update<true>(key, value); }
+
+  inline void update(const std::vector<std::byte> &key, const std::vector<std::byte> &value) {
+    update(ByteArray{key}, ByteArray{value});
+  }
+  inline void update(const std::string &key, const std::string &value) { update(ByteArray{key}, ByteArray{value}); }
+  inline void update(const ByteArray &key, const ByteArray &value) { insert_or_update<false>(key, value); }
 
   inline void remove(const std::vector<std::byte> &key) { remove(ByteArray{key}); }
   inline void remove(const std::string &key) { remove(ByteArray{key}); }
@@ -34,7 +40,11 @@ class BTree {
   size_t root;
   driver::IBTreeDriver *store_driver;
 
-  std::unique_ptr<BNode> insert_node(const BNode &node, const ByteArray &key, const ByteArray &value) const;
+  template <bool ALLOW_INSERT>
+  void insert_or_update(const ByteArray &key, const ByteArray &value);
+
+  template <bool ALLOW_INSERT>
+  std::unique_ptr<BNode> insert_or_update_node(const BNode &node, const ByteArray &key, const ByteArray &value) const;
 
   std::unique_ptr<BNode> remove_node(const BNode &node, const ByteArray &key) const;
 

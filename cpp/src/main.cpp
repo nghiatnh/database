@@ -60,6 +60,9 @@ void test_btree() {
   tree.insert(std::string{"rh"}, std::string{"bioturi"});
   tree.insert(std::string{"yh"}, std::string{"bioturi"});
   tree.print();
+  tree.update(std::string{"ohhkhkk"}, std::string{"bioturing"});
+  tree.update(std::string{"hghia"}, std::string{"hghia"});
+  tree.print();
   tree.remove(std::string{"i'm"});
   tree.remove(std::string{"hello"});
   tree.remove(std::string{"mghia"});
@@ -107,6 +110,12 @@ void test_kv_store() {
   kv.insert(std::string{"qhl"}, std::string{"bioturi"});
   kv.insert(std::string{"rh"}, std::string{"bioturi"});
   kv.insert(std::string{"yh"}, std::string{"bioturi"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
+
+  kv.update(std::string{"ohhkhkk"}, std::string{"bioturing"});
+  kv.update(std::string{"hghia"}, std::string{"hghia"});
 
   kv.get_tree()->print();
   kv.get_stack()->print();

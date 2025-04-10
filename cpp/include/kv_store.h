@@ -44,12 +44,14 @@ class KVStore {
   }
 
   inline void insert(const std::string &key, const std::string &value) { insert(ByteArray{key}, ByteArray{value}); }
+  inline void update(const std::string &key, const std::string &value) { update(ByteArray{key}, ByteArray{value}); }
   inline void remove(const std::string &key) { remove(ByteArray{key}); }
 
   inline const BTree *get_tree() { return tree.get(); }
   inline const Stack *get_stack() { return stack.get(); }
 
   void insert(const ByteArray &key, const ByteArray &value);
+  void update(const ByteArray &key, const ByteArray &value);
   void remove(const ByteArray &key);
   void flush();
 

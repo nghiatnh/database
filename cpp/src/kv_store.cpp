@@ -11,6 +11,11 @@ void KVStore::insert(const ByteArray &key, const ByteArray &value) {
   flush();
 }
 
+void KVStore::update(const ByteArray &key, const ByteArray &value) {
+  tree->update(key, value);
+  flush();
+}
+
 void KVStore::remove(const ByteArray &key) {
   tree->remove(key);
   flush();
