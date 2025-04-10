@@ -193,18 +193,22 @@ unique_ptr<BNode> BTree::remove_node(const BNode& node, const ByteArray& key) co
   auto result = remove_node(*page_node, key).release();
   if (result->data_size() < PAGE_SIZE / 2) {
     if (offset > 0) {
-      auto left = get_node(store_driver->get(internal.get_pointer(offset - 1)));
+      auto left_page = internal.get_pointer(offset - 1);
+      auto left = get_node(store_driver->get(left_page));
       if (left->data_size() < PAGE_SIZE * 2 / 4 || result->n_keys() == 0) {
         auto new_node = merge_node(internal, offset - 1, *left, *result);
         store_driver->delete_page(page);
+        store_driver->delete_page(left_page);
         return new_node;
       }
     }
     if (offset < internal.n_keys()) {
-      auto right = get_node(store_driver->get(internal.get_pointer(offset + 1)));
+      auto right_page = internal.get_pointer(offset + 1);
+      auto right = get_node(store_driver->get(right_page));
       if (right->data_size() < PAGE_SIZE * 2 / 4 || result->n_keys() == 0) {
         auto new_node = merge_node(internal, offset, *result, *right);
         store_driver->delete_page(page);
+        store_driver->delete_page(right_page);
         return new_node;
       }
     }

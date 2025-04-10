@@ -112,23 +112,77 @@ void test_kv_store() {
   kv.get_stack()->print();
 
   kv.remove(std::string{"i'm"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"hello"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"mghia"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"i'mm"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"nghia"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"nh"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"hghia"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"absldk"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"adb"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"cdb"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"ohhkhkk"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"ddb"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"fdb"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"qhl"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"yh"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"ph"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"qhk"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"rh"});
+
+  kv.get_tree()->print();
+  kv.get_stack()->print();
   kv.remove(std::string{"qhh"});
 
   kv.get_tree()->print();
