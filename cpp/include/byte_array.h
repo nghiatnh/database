@@ -1,5 +1,5 @@
-#ifndef BYTE_ARRAY_H
-#define BYTE_ARRAY_H
+#ifndef CPP_DATABASE_BYTE_ARRAY_H
+#define CPP_DATABASE_BYTE_ARRAY_H
 
 #include <bitset>
 #include <cassert>
@@ -20,10 +20,6 @@ class ByteArray {
     std::memcpy(data, s.data(), n);
   }
   explicit ByteArray(std::size_t _n) : n{_n} { data = new std::byte[n]; }
-  explicit ByteArray(std::vector<std::byte>&& v) : n{v.size()} {
-    data = new std::byte[n];
-    std::memcpy(data, v.data(), n);
-  }
   explicit ByteArray(const std::vector<std::byte>& v) : n{v.size()} {
     data = new std::byte[n];
     std::memcpy(data, v.data(), n);
@@ -37,7 +33,14 @@ class ByteArray {
     data = new std::byte[n];
     std::memcpy(data, v.data, n);
   }
-  ByteArray& operator=(ByteArray&&) = delete;
+  ByteArray& operator=(const ByteArray& other) {
+    if (*this != other) {
+      delete[] data;
+      data = new std::byte[other.n];
+      std::memcpy(data, other.data, other.n);
+    }
+    return *this;
+  };
 
   inline std::string c_str() const { return std::string{cast_data<char>(), n}; }
   inline int c_int() const { return get<int32_t>(0); }
@@ -53,7 +56,7 @@ class ByteArray {
   }
 
   inline void set_value(size_t start, const ByteArray& other) {
-    assert(start < n && start + other.n < n);
+    assert(start < n && start + other.n <= n);
     std::memcpy(data + start, other.data, other.n);
   }
 
@@ -70,7 +73,7 @@ class ByteArray {
     return cast_data<T>(index)[0];
   }
   inline ByteArray slice(size_t start, size_t end) const {
-    assert(start < end && end < n);
+    assert(start < end && end <= n);
     ByteArray arr{end - start};
     std::memcpy(arr.data, data + start, end - start);
     return ByteArray{arr};
@@ -111,4 +114,4 @@ class ByteArray {
 
 }  // namespace cpp_database
 
-#endif  // !BYTE_ARRAY_H
+#endif  // !CPP_DATABASE_BYTE_ARRAY_H

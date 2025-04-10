@@ -1,5 +1,5 @@
-#ifndef DEBUG_H
-#define DEBUG_H
+#ifndef CPP_DATABASE_DEBUG_H
+#define CPP_DATABASE_DEBUG_H
 
 #include <chrono>
 #include <iostream>
@@ -33,4 +33,4 @@ class TimeWatcher {
 };
 }  // namespace cpp_database::debug
 
-#endif  // !DEGUB_H
+#endif  // !CPP_DATABASE_DEBUG_H

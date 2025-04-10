@@ -5,6 +5,8 @@
     "editor.semanticHighlighting.enabled": true,
     "editor.defaultFormatter": "ms-vscode.cpptools"
   },
-  "C_Cpp.clang_format_fallbackStyle": "{ BasedOnStyle: Google, IndentWidth: 2, ColumnLimit: 100 }",
-  "editor.rulers": [100]
+  "C_Cpp.clang_format_fallbackStyle": "{ BasedOnStyle: Google, IndentWidth: 2, ColumnLimit: 120 }",
+  "editor.rulers": [
+    120
+  ]
 }

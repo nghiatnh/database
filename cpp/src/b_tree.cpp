@@ -12,7 +12,7 @@ namespace cpp_database {
 
 // Insert a key-value pair
 void BTree::insert(const ByteArray& key, const ByteArray& value) {
-  if (!store_driver->has_page(root)) {
+  if (is_empty()) {
     ByteArray arr{2 * PAGE_SIZE};
     arr.set_value<byte>(0, static_cast<byte>(NodeType::LEAF));
     arr.set_value<size_t>(1, 0);

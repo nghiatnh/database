@@ -1,5 +1,5 @@
-#ifndef DB_H
-#define DB_H
+#ifndef CPP_DATABASE_DB_H
+#define CPP_DATABASE_DB_H
 
 namespace cpp_database {
 
@@ -7,4 +7,4 @@ class DB {};
 
 }  // namespace cpp_database
 
-#endif  // !DB_H
+#endif  // !CPP_DATABASE_DB_H
