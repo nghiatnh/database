@@ -29,6 +29,24 @@ class MemoryDriver : public IBTreeDriver, public IStackDriver {
   std::map<size_t, ByteArray> data;
 };
 
+class MemoryIO : public IIODriver {
+  MemoryIO() { data = ByteArray{0}; }
+  bool open() { return true; }
+  bool close() { return true; }
+  size_t size() { return data.size(); }
+  ByteArray read(size_t offset, size_t size) { return data.slice(offset, offset + size); }
+  void write(size_t offset, const ByteArray &_data) { data.set_value(offset, _data); }
+  void flush() {}
+  void extend(size_t size) {
+    ByteArray old_data = ByteArray{data};
+    data = ByteArray{size};
+    data.set_value(0, old_data);
+  }
+
+ private:
+  ByteArray data;
+};
+
 }  // namespace cpp_database::driver
 
 #endif  // !CPP_DATABASE_DRIVER_MEMORY_H
